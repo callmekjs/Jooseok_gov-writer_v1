@@ -72,7 +72,12 @@ def build_speech_prompt(input: SpeechInput, *, contexts: list[str] | None = None
     if l4:
         user_parts.append(l4)
     if input.persona_block.strip():          # 저장소 없이 폼 값만
-        user_parts.append(input.persona_block.strip())
+        user_parts.append(
+            "# 발화자의 말투·표현\n\n"
+            "아래는 이 발화자가 평소 쓰는 표현과 말투입니다.\n"
+            "본문에 자연스럽게 녹여 쓰십시오. 문장을 그대로 옮겨 써도 좋습니다.\n\n"
+            + input.persona_block.strip()
+        )
     user_parts.append(build_l5_speech(input))
 
     return system_prompt, "\n\n---\n\n".join(user_parts)

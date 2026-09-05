@@ -59,3 +59,10 @@ def test_seomyeon_chuksa_switches_to_four_part_structure():
     system, _ = build_speech_prompt(_base(event_type="서면축사"))
     assert "서면축사" in system
     assert "4단" in system
+
+
+def test_persona_block_carries_an_instruction_label():
+    """날 텍스트만 넣으면 AI 가 무엇인지 몰라 무시한다. 라벨이 붙어야 한다."""
+    _, user = build_speech_prompt(_base(persona_block="현장에서 답을 찾겠습니다"))
+    assert "발화자의 말투" in user
+    assert "현장에서 답을 찾겠습니다" in user
