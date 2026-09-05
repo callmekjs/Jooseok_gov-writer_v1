@@ -23,7 +23,9 @@ if settings.environment == "development":
     )
 
 # ── 2) 라우터 — Task 3·5·7·10 에서 여기에 추가된다 ────────
-# app.include_router(...)
+from policy_writer.api import settings_router
+
+app.include_router(settings_router)
 
 # ── 3) 기본 엔드포인트 ───────────────────────────────────
 @app.get("/health")
