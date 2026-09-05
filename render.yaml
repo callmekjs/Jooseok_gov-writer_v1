@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: policy-writer
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: |
+      pip install -e .
+      cd frontend && npm install && npm run build
+    startCommand: uvicorn policy_writer.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production          # ★ 🔴 이 줄이 AI 키 공개를 막는 유일한 장치
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: OPENAI_API_KEY
+        value: ""                  # 비워둔다
+      - key: ANTHROPIC_API_KEY
+        value: ""                  # 비워둔다
