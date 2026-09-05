@@ -37,5 +37,6 @@ def test_top_tier_models_do_not_accept_temperature():
     assert catalog.resolve("openai", "gpt-5.6-terra")["temperature"] is False
 
 
-def test_anthropic_has_exactly_two_tiers():
-    assert len(catalog.MODELS["anthropic"]) == 2
+def test_anthropic_has_three_verified_tiers():
+    tiers = [m["tier"] for m in catalog.MODELS["anthropic"]]
+    assert tiers == ["경제형", "표준형", "최상위"]

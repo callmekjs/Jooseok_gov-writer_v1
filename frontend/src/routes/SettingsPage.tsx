@@ -1,15 +1,24 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { KEY_PATTERN, type Provider, useLLMSettings } from '../hooks/useLLMSettings'
+import { getJson } from '../lib/api'
 
 const PROVIDERS: { id: Provider; label: string }[] = [
   { id: 'openai', label: 'OpenAI' },
   { id: 'anthropic', label: 'Anthropic' },
 ]
 
+type ModelRow = { id: string; tier: string; won_per_doc: number }
+type ModelCatalog = Record<string, ModelRow[]>
+
 export default function SettingsPage() {
-  const { provider, setProvider, setKey, keyOf } = useLLMSettings()
+  const { provider, setProvider, setKey, setModel, keyOf, modelOf } = useLLMSettings()
   const [draft, setDraft] = useState(keyOf(provider))
   const [status, setStatus] = useState<string | null>(null)
+  const [models, setModels] = useState<ModelCatalog>({})
+
+  useEffect(() => {
+    getJson<ModelCatalog>('/api/models').then(setModels).catch(() => setModels({}))
+  }, [])
 
   async function test() {
     if (!KEY_PATTERN[provider].test(draft)) {
@@ -48,6 +57,28 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 font-semibold">모델 등급</h2>
+        <div className="space-y-1">
+          {(models[provider] ?? []).map((m) => (
+            <label key={m.id} className="flex cursor-pointer items-center gap-3 rounded border px-3 py-2">
+              <input
+                type="radio"
+                name="model"
+                checked={modelOf(provider) === m.id}
+                onChange={() => setModel(provider, m.id)}
+              />
+              <span className="w-16 font-medium">{m.tier}</span>
+              <span className="flex-1 font-mono text-sm text-gray-600">{m.id}</span>
+              <span className="text-sm">약 {m.won_per_doc}원</span>
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-gray-500">
+          말씀자료 1건당 예상 비용입니다. 회사별로 마지막에 고른 등급을 따로 기억합니다.
+        </p>
       </section>
 
       <section>
