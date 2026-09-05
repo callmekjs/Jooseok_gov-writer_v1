@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,4 +46,9 @@ if STATIC_DIR.is_dir():
 
     @app.get("/{full_path:path}")
     def spa(full_path: str) -> FileResponse:
+        # /api/* 는 SPA 폴백이 잡지 않는다.
+        # 라우터에 없는 API 경로는 HTML 이 아니라 404 JSON 으로 답해야
+        # 라우터 등록 누락을 바로 알아챌 수 있다.
+        if full_path.startswith("api/"):
+            raise HTTPException(404, "존재하지 않는 API 경로입니다.")
         return FileResponse(STATIC_DIR / "index.html")
