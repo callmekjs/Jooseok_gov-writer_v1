@@ -9,7 +9,7 @@ const K = {
 }
 
 // 화면 초기 선택값 — 서버의 catalog.DEFAULTS 와는 다른 개념이다.
-// 경제형은 목표를 올려도 700~1,000자에서 멈추므로 최상위를 기본으로 둔다.
+// 인턴 등급은 목표를 올려도 700~1,000자에서 멈추므로 선임비서를 기본으로 둔다.
 const INITIAL_MODEL: Record<Provider, string> = {
   openai: 'gpt-5.6-sol',
   anthropic: 'claude-sonnet-4-5-20250929',

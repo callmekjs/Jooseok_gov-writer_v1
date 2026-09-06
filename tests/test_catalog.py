@@ -7,7 +7,7 @@ from policy_writer.llm import catalog
 def test_resolve_returns_model_meta():
     m = catalog.resolve("openai", "gpt-4o-mini")
     assert m["id"] == "gpt-4o-mini"
-    assert m["tier"] == "경제형"
+    assert m["tier"] == "인턴"
     assert m["temperature"] is True
 
 
@@ -39,4 +39,4 @@ def test_top_tier_models_do_not_accept_temperature():
 
 def test_anthropic_has_three_verified_tiers():
     tiers = [m["tier"] for m in catalog.MODELS["anthropic"]]
-    assert tiers == ["경제형", "표준형", "최상위"]
+    assert tiers == ["인턴", "비서", "선임비서"]

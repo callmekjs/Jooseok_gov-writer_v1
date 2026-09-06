@@ -8,12 +8,12 @@
 #   [조사] 공급사 문서·모델 목록으로만 확인했다. 호출해 보지 않았다
 #
 # 모델 검증 상태
-#   OpenAI    경제형  gpt-4o-mini                 [실측] 200
-#   OpenAI    표준형  gpt-5.6-terra               [조사] GET /v1/models 에 존재. 호출 미확인
-#   OpenAI    최상위  gpt-5.6-sol                 [실측] 200
-#   Anthropic 경제형  claude-haiku-4-5            [실측] 200
-#   Anthropic 표준형  claude-sonnet-4-5-20250929  [실측] 200
-#   Anthropic 최상위  claude-opus-4-5-20251101    [실측] 200 (temperature 포함/제외 양쪽)
+#   OpenAI    인턴      gpt-4o-mini                 [실측] 200
+#   OpenAI    비서      gpt-5.6-terra               [조사] GET /v1/models 에 존재. 호출 미확인
+#   OpenAI    선임비서  gpt-5.6-sol                 [실측] 200
+#   Anthropic 인턴      claude-haiku-4-5            [실측] 200
+#   Anthropic 비서      claude-sonnet-4-5-20250929  [실측] 200
+#   Anthropic 선임비서  claude-opus-4-5-20251101    [실측] 200 (temperature 포함/제외 양쪽)
 #
 # 가격(in/out)은 여섯 개 전부 [조사] 다 — 공급사 문서 값이며 청구서로 대조하지 않았다.
 # 따라서 화면에 보이는 "1건당 N원"은 추정치다.
@@ -22,19 +22,19 @@ from fastapi import HTTPException
 
 MODELS: dict[str, list[dict]] = {
     "openai": [
-        {"id": "gpt-4o-mini",   "tier": "경제형", "temperature": True,
+        {"id": "gpt-4o-mini",   "tier": "인턴", "temperature": True,
          "in": 0.15, "out": 0.60},
-        {"id": "gpt-5.6-terra", "tier": "표준형", "temperature": False,
+        {"id": "gpt-5.6-terra", "tier": "비서", "temperature": False,
          "in": 2.00, "out": 12.00},
-        {"id": "gpt-5.6-sol",   "tier": "최상위", "temperature": False,
+        {"id": "gpt-5.6-sol",   "tier": "선임비서", "temperature": False,
          "in": 4.00, "out": 20.00},
     ],
     "anthropic": [
-        {"id": "claude-haiku-4-5",           "tier": "경제형", "temperature": True,
+        {"id": "claude-haiku-4-5",           "tier": "인턴", "temperature": True,
          "in": 1.00, "out": 5.00},
-        {"id": "claude-sonnet-4-5-20250929", "tier": "표준형", "temperature": True,
+        {"id": "claude-sonnet-4-5-20250929", "tier": "비서", "temperature": True,
          "in": 3.00, "out": 15.00},
-        {"id": "claude-opus-4-5-20251101",   "tier": "최상위", "temperature": True,
+        {"id": "claude-opus-4-5-20251101",   "tier": "선임비서", "temperature": True,
          "in": 5.00, "out": 25.00},   # [실측] 200 확인 (2026-09-05). 가격은 [조사] — 미검증
     ],
 }

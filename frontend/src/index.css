@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Pretendard', system-ui, -apple-system, sans-serif;
+}
+
 /* 브라우저가 다크모드여도 이 앱은 밝은 화면으로 고정한다.
    배경색을 직접 칠하지 않으면 body 가 투명이라 브라우저의 검은 바탕이 비쳐
    검은 글씨 + 검은 배경이 된다 (2026-09-06 실측). */
@@ -10,4 +14,21 @@
 body {
   background-color: #ffffff;
   color: #111827;
+}
+
+@layer base {
+  /* iOS 자동 줌인 방지: 640px 이하에서 input/textarea/select 를 16px 이상으로 */
+  @media (max-width: 640px) {
+    input[type="text"], input[type="number"], input[type="email"],
+    input[type="password"], input[type="search"], input[type="url"],
+    textarea, select { font-size: 16px !important; }
+  }
+
+  /* 터치 영역 최소 보장 (Apple 44px, Material 48px 권장) */
+  @media (max-width: 640px) {
+    button, a[role="button"] { min-height: 36px; }
+  }
+
+  /* 가로 스크롤 방지 */
+  html, body { overflow-x: hidden; }
 }
