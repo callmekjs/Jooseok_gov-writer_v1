@@ -11,3 +11,9 @@ static/
 dist/
 *.tsbuildinfo
 .superpowers/
+
+# 시험용으로 내려받은 공공데이터 원본 (참고용, 앱 의존성 아님)
+# 출처가 있는 남의 데이터를 공개 저장소에 재배포하지 않는다.
+# 요약본은 docs/samples/gunwi-event-schedule-sample.md 에 출처와 함께 커밋한다.
+docs/*.csv
+docs/*.xlsx
