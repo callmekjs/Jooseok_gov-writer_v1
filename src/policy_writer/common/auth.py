@@ -41,3 +41,28 @@ def require_app_password(request: Request) -> None:
         return
     if not password_matches(request.headers.get(APP_PASSWORD_HEADER) or ""):
         raise HTTPException(401, "접속 암호가 올바르지 않습니다.")
+
+
+# ── 수정 라운드 2 ─────────────────────────────────────────────────────────
+# 🔴 Critical: 라운드 1 이 hmac.compare_digest 를 bytes 비교로 고쳐 "한글 암호가
+# 서버를 500 으로 죽이는" 문제는 막았지만, 더 근본적인 제약이 남아 있다 —
+# HTTP 커스텀 헤더 값은 규격상 ISO-8859-1(라틴-1)이라 한글 등 비-ASCII 문자는
+# X-App-Password 헤더로 애초에 왕복이 안 된다(실제 브라우저 fetch 도 헤더에
+# 비-Latin1 문자를 넣으면 TypeError 를 던진다). 그 결과 POST /api/auth/check
+# (JSON 바디)에서는 로그인이 "성공"하지만, 그 뒤 모든 요청이 담는 헤더에서는
+# 같은 값이 조용히 실패한다 — 로그인 성공 후 원인 불명으로 아무것도 안 되는
+# 최악의 실패 방식이다. 그래서 왕복 불가능한 암호는 입력·설정 시점에 명확히
+# 거부한다. NON_ASCII_PASSWORD_MESSAGE 와 is_ascii_only 를 여기 한 곳에 모아
+# /api/auth/check(입력 검사)와 /api/auth/required(서버 설정 검사)가 함께 쓴다.
+
+NON_ASCII_PASSWORD_MESSAGE = "암호는 영문·숫자·기호만 사용할 수 있습니다. (한글은 사용할 수 없습니다)"
+
+
+def is_ascii_only(value: str) -> bool:
+    """value 가 인쇄 가능 ASCII(0x20~0x7E)만으로 이루어져 있는지 검사한다.
+
+    이 범위 밖의 문자(한글 등)가 하나라도 있으면 False — HTTP 헤더 값(ISO-8859-1)
+    으로 왕복할 수 없는 문자라는 뜻이다. 빈 문자열은 True(all()의 공허참) —
+    "비어 있음"과 "쓸 수 없는 문자를 포함함"은 서로 다른 문제이므로, 빈 값을
+    이 함수로 거부하지 않는다(호출부가 필요하면 따로 빈 값을 검사한다)."""
+    return all("\x20" <= ch <= "\x7e" for ch in value)

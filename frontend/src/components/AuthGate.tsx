@@ -5,6 +5,10 @@ import { APP_PASSWORD_STORAGE_KEY, getJson } from '../lib/api'
 
 type GateStatus = 'checking' | 'locked' | 'open' | 'misconfigured'
 
+// HTTP 헤더 값은 ISO-8859-1 만 담을 수 있어 한글 암호는 헤더로 왕복이 안 된다.
+// 여기서 막지 않으면 로그인은 성공하고 이후 요청만 조용히 실패한다.
+const ASCII_ONLY = /^[\x20-\x7E]+$/
+
 /** App.tsx 를 감싸는 게이트. 서버에 접속 암호(APP_PASSWORD)가 설정돼 있으면
  *  암호를 입력받아 localStorage 에 저장한 뒤에만 실제 화면을 보여준다.
  *  이 게이트는 UX 편의일 뿐 보안 경계가 아니다 — 실제 방어선은 서버의
@@ -41,6 +45,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     e.preventDefault()
     if (!password || busy) return
     setError(null)
+    if (!ASCII_ONLY.test(password)) {
+      setError('암호는 영문·숫자·기호만 사용할 수 있습니다. (한글은 사용할 수 없습니다)')
+      return
+    }
     setBusy(true)
     try {
       const res = await fetch('/api/auth/check', {
@@ -74,7 +82,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
             <h1 className="text-lg font-semibold text-slate-900">서버 설정 오류</h1>
           </div>
           <p className="text-sm text-slate-600">
-            서버에 접속 암호가 설정되지 않았습니다. 관리자에게 문의해 주세요.
+            서버의 접속 암호(APP_PASSWORD) 설정에 문제가 있습니다. 값이 비어 있거나
+            한글 등 비-ASCII 문자를 포함하고 있을 수 있습니다. 관리자는 영문·숫자·기호로만
+            이루어진 암호를 설정해 주세요.
           </p>
         </div>
       </div>
