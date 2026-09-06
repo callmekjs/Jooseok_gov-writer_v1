@@ -14,6 +14,8 @@ services:
       - key: PYTHON_VERSION
         value: "3.12"
       - key: OPENAI_API_KEY
-        value: ""                  # 비워둔다
+        value: ""                  # 비워둔다 — Render 대시보드에서 직접 채운다
       - key: ANTHROPIC_API_KEY
-        value: ""                  # 비워둔다
+        value: ""                  # 비워둔다 — Render 대시보드에서 직접 채운다
+      - key: APP_PASSWORD
+        value: ""                  # 비워둔다 — Render 대시보드에서 직접 채운다. 비어 있으면 접속 암호 없이 누구나 쓴다

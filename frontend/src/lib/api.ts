@@ -10,6 +10,18 @@ export class ApiError extends Error {
 
 const TIMEOUT_MS = 130_000   // 서버 타임아웃 120초보다 길게 — 504를 사용자가 받도록
 
+/** 접속 암호 게이트(AuthGate.tsx)가 저장하는 localStorage 키. 한 곳에서만 적는다. */
+export const APP_PASSWORD_STORAGE_KEY = 'gw_app_password'
+
+function readAppPassword(): string {
+  return localStorage.getItem(APP_PASSWORD_STORAGE_KEY) ?? ''
+}
+
+/** LLM 키 헤더 — 값이 있을 때만 붙인다. 비우면(서버 폴백) 서버 자신의 키를 쓴다. */
+function llmKeyHeader(provider: string, key: string): Record<string, string> {
+  return key ? { [provider === 'openai' ? 'X-OpenAI-Key' : 'X-Anthropic-Key']: key } : {}
+}
+
 async function fetchWithTimeout(path: string, init: RequestInit): Promise<Response> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS)
@@ -25,10 +37,9 @@ async function fetchWithTimeout(path: string, init: RequestInit): Promise<Respon
   }
 }
 
-/** 모든 AI 요청의 단일 창구. provider·model·key 세 헤더를 여기서만 붙인다. */
+/** 모든 AI 요청의 단일 창구. provider·model·key·접속암호 헤더를 여기서만 붙인다. */
 export async function callApi<T>(path: string, body: unknown): Promise<T> {
   const { provider, model, key } = getLLMSettings()
-  if (!key) throw new ApiError(401, '설정에서 API 키를 먼저 입력해 주세요.')
 
   const res = await fetchWithTimeout(path, {
     method: 'POST',
@@ -36,7 +47,8 @@ export async function callApi<T>(path: string, body: unknown): Promise<T> {
       'Content-Type': 'application/json',
       'X-LLM-Provider': provider,
       'X-LLM-Model': model,
-      [provider === 'openai' ? 'X-OpenAI-Key' : 'X-Anthropic-Key']: key,
+      'X-App-Password': readAppPassword(),
+      ...llmKeyHeader(provider, key),
     },
     body: JSON.stringify(body),
   })
@@ -48,7 +60,9 @@ export async function callApi<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function getJson<T>(path: string): Promise<T> {
-  const res = await fetchWithTimeout(path, {})
+  const res = await fetchWithTimeout(path, {
+    headers: { 'X-App-Password': readAppPassword() },
+  })
   if (!res.ok) throw new ApiError(res.status, '요청에 실패했습니다.')
   return res.json()
 }
@@ -57,14 +71,14 @@ export async function getJson<T>(path: string): Promise<T> {
  *  브라우저가 boundary 까지 붙인 Content-Type 을 자동으로 설정한다. */
 export async function postMultipart<T>(path: string, formData: FormData): Promise<T> {
   const { provider, model, key } = getLLMSettings()
-  if (!key) throw new ApiError(401, '설정에서 API 키를 먼저 입력해 주세요.')
 
   const res = await fetchWithTimeout(path, {
     method: 'POST',
     headers: {
       'X-LLM-Provider': provider,
       'X-LLM-Model': model,
-      [provider === 'openai' ? 'X-OpenAI-Key' : 'X-Anthropic-Key']: key,
+      'X-App-Password': readAppPassword(),
+      ...llmKeyHeader(provider, key),
     },
     body: formData,
   })

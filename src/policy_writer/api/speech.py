@@ -1,8 +1,9 @@
 import json
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ValidationError
 
+from policy_writer.common.auth import require_app_password
 from policy_writer.common.keys import norm_provider, resolve_user_key
 from policy_writer.common.quality import check_output
 from policy_writer.extractors.files import extract_text, is_unsupported
@@ -10,7 +11,8 @@ from policy_writer.llm import catalog, cost
 from policy_writer.llm.client import call_llm
 from policy_writer.prompts.builder import SpeechInput, build_speech_prompt
 
-router = APIRouter()
+# 이 라우터의 세 엔드포인트는 전부 AI 를 호출해 돈을 쓴다 — 라우터 단위로 접속 암호를 검사한다 (G9).
+router = APIRouter(dependencies=[Depends(require_app_password)])
 
 
 class DraftIn(BaseModel):
