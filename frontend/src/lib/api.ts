@@ -52,3 +52,25 @@ export async function getJson<T>(path: string): Promise<T> {
   if (!res.ok) throw new ApiError(res.status, '요청에 실패했습니다.')
   return res.json()
 }
+
+/** 파일 업로드 전용 창구. Content-Type 을 직접 지정하지 않는다 — FormData 를 넘기면
+ *  브라우저가 boundary 까지 붙인 Content-Type 을 자동으로 설정한다. */
+export async function postMultipart<T>(path: string, formData: FormData): Promise<T> {
+  const { provider, model, key } = getLLMSettings()
+  if (!key) throw new ApiError(401, '설정에서 API 키를 먼저 입력해 주세요.')
+
+  const res = await fetchWithTimeout(path, {
+    method: 'POST',
+    headers: {
+      'X-LLM-Provider': provider,
+      'X-LLM-Model': model,
+      [provider === 'openai' ? 'X-OpenAI-Key' : 'X-Anthropic-Key']: key,
+    },
+    body: formData,
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, detail.detail ?? '요청에 실패했습니다.')
+  }
+  return res.json()
+}
