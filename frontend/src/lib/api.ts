@@ -8,12 +8,29 @@ export class ApiError extends Error {
   }
 }
 
+const TIMEOUT_MS = 130_000   // 서버 타임아웃 120초보다 길게 — 504를 사용자가 받도록
+
+async function fetchWithTimeout(path: string, init: RequestInit): Promise<Response> {
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), TIMEOUT_MS)
+  try {
+    return await fetch(path, { ...init, signal: ac.signal })
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') {
+      throw new ApiError(504, '시간이 초과되었습니다. 분량을 줄이거나 다시 시도해 주세요.')
+    }
+    throw new ApiError(0, '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** 모든 AI 요청의 단일 창구. provider·model·key 세 헤더를 여기서만 붙인다. */
 export async function callApi<T>(path: string, body: unknown): Promise<T> {
   const { provider, model, key } = getLLMSettings()
   if (!key) throw new ApiError(401, '설정에서 API 키를 먼저 입력해 주세요.')
 
-  const res = await fetch(path, {
+  const res = await fetchWithTimeout(path, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -31,7 +48,7 @@ export async function callApi<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path)
+  const res = await fetchWithTimeout(path, {})
   if (!res.ok) throw new ApiError(res.status, '요청에 실패했습니다.')
   return res.json()
 }

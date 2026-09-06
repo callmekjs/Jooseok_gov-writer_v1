@@ -9,15 +9,22 @@ const PROVIDERS: { id: Provider; label: string }[] = [
 
 type ModelRow = { id: string; tier: string; won_per_doc: number }
 type ModelCatalog = Record<string, ModelRow[]>
+type ModelsStatus = 'loading' | 'error' | 'ready'
 
 export default function SettingsPage() {
   const { provider, setProvider, setKey, setModel, keyOf, modelOf } = useLLMSettings()
   const [draft, setDraft] = useState(keyOf(provider))
   const [status, setStatus] = useState<string | null>(null)
   const [models, setModels] = useState<ModelCatalog>({})
+  const [modelsStatus, setModelsStatus] = useState<ModelsStatus>('loading')
 
   useEffect(() => {
-    getJson<ModelCatalog>('/api/models').then(setModels).catch(() => setModels({}))
+    getJson<ModelCatalog>('/api/models')
+      .then((data) => {
+        setModels(data)
+        setModelsStatus('ready')
+      })
+      .catch(() => setModelsStatus('error'))
   }, [])
 
   async function test() {
@@ -61,21 +68,37 @@ export default function SettingsPage() {
 
       <section>
         <h2 className="mb-2 font-semibold">모델 등급</h2>
-        <div className="space-y-1">
-          {(models[provider] ?? []).map((m) => (
-            <label key={m.id} className="flex cursor-pointer items-center gap-3 rounded border px-3 py-2">
-              <input
-                type="radio"
-                name="model"
-                checked={modelOf(provider) === m.id}
-                onChange={() => setModel(provider, m.id)}
-              />
-              <span className="w-16 font-medium">{m.tier}</span>
-              <span className="flex-1 font-mono text-sm text-gray-600">{m.id}</span>
-              <span className="text-sm">약 {m.won_per_doc}원</span>
-            </label>
-          ))}
-        </div>
+
+        {modelsStatus === 'loading' && (
+          <p className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            모델 목록을 불러오는 중입니다... 첫 접속 시 서버가 깨어나느라 최대 1분 정도 걸릴 수 있습니다.
+          </p>
+        )}
+
+        {modelsStatus === 'error' && (
+          <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            모델 목록을 불러오지 못했습니다. 새로고침해 주세요.
+          </p>
+        )}
+
+        {modelsStatus === 'ready' && (
+          <div className="space-y-1">
+            {(models[provider] ?? []).map((m) => (
+              <label key={m.id} className="flex cursor-pointer items-center gap-3 rounded border px-3 py-2">
+                <input
+                  type="radio"
+                  name="model"
+                  checked={modelOf(provider) === m.id}
+                  onChange={() => setModel(provider, m.id)}
+                />
+                <span className="w-16 font-medium">{m.tier}</span>
+                <span className="flex-1 font-mono text-sm text-gray-600">{m.id}</span>
+                <span className="text-sm">약 {m.won_per_doc}원</span>
+              </label>
+            ))}
+          </div>
+        )}
+
         <p className="mt-2 text-xs text-gray-500">
           말씀자료 1건당 예상 비용입니다. 회사별로 마지막에 고른 등급을 따로 기억합니다.
         </p>

@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+/* 브라우저가 다크모드여도 이 앱은 밝은 화면으로 고정한다.
+   배경색을 직접 칠하지 않으면 body 가 투명이라 브라우저의 검은 바탕이 비쳐
+   검은 글씨 + 검은 배경이 된다 (2026-09-06 실측). */
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: #ffffff;
+  color: #111827;
+}
