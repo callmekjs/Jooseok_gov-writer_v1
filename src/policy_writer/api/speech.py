@@ -33,12 +33,28 @@ async def _run_draft(request, payload: DraftIn, contexts: list[str],
         max_tokens=payload.max_tokens, temperature=payload.temperature,
     )
     meta["cost_won"] = cost.won_for_usage(model_meta, meta["input_tokens"], meta["output_tokens"])
+
+    from policy_writer.db import drafts as drafts_db
+
+    draft_id, save_warning = None, None
+    if drafts_db.is_configured():
+        try:
+            draft_id = await drafts_db.create_draft(
+                event_type=payload.input.event_type,
+                title=payload.input.event_name,
+                form_data=payload.input.model_dump(),
+                generated_text=text,
+                llm_meta=meta,                      # ★ 모델·비용·소요시간
+            )
+        except Exception as e:
+            save_warning = f"이력 저장에 실패했습니다: {e}"   # 삼키지 않는다
+
     return {
         "generated_text": text,
         "char_count": len(text.strip()),
-        "draft_id": None,
+        "draft_id": draft_id,
         "warnings": check_output(text, payload.input.target_chars),
-        "save_warning": None,
+        "save_warning": save_warning,
         "meta": meta,
     }
 
