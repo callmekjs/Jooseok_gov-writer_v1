@@ -16,7 +16,29 @@ export type DraftResult = {
   meta: DraftMeta
 }
 
-export default function ResultPanel({ result }: { result: DraftResult }) {
+async function download(kind: 'md' | 'hwpx', title: string, text: string) {
+  const res = await fetch(`/api/download/speech/${kind}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, generated_text: text }),
+  })
+  if (!res.ok) { alert('다운로드에 실패했습니다.'); return }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title}.${kind}`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export default function ResultPanel({
+  result,
+  title,
+}: {
+  result: DraftResult
+  title: string
+}) {
   const { meta } = result
   return (
     <div className="mt-8 rounded border">
@@ -35,6 +57,15 @@ export default function ResultPanel({ result }: { result: DraftResult }) {
       <article className="whitespace-pre-wrap px-4 py-4 leading-relaxed">
         {result.generated_text}
       </article>
+
+      <div className="flex gap-2 border-t px-4 py-3">
+        <button onClick={() => download('md', title, result.generated_text)}
+                className="rounded border px-4 py-2 text-sm">마크다운 받기</button>
+        <button onClick={() => download('hwpx', title, result.generated_text)}
+                className="rounded border px-4 py-2 text-sm">한글파일 받기</button>
+        <button onClick={() => navigator.clipboard.writeText(result.generated_text)}
+                className="rounded border px-4 py-2 text-sm">복사</button>
+      </div>
     </div>
   )
 }

@@ -49,11 +49,13 @@ export function clampCustomChars(n: number): number {
   return Math.min(CUSTOM_CHARS_MAX, Math.max(CUSTOM_CHARS_MIN, Math.round(n)))
 }
 
+/** 옵션 목록에서 key 에 해당하는 한글 라벨을 찾는다. 못 찾으면 key 그대로. */
+export function labelOf(opts: readonly { key: string; label: string }[], key: string): string {
+  return opts.find((o) => o.key === key)?.label ?? key
+}
+
 /** ★ 화면은 키를 쓰고, API 로는 한글 라벨을 보낸다. */
 export function toApiPayload(form: FormState, customChars: number) {
-  const labelOf = (opts: readonly { key: string; label: string }[], key: string) =>
-    opts.find((o) => o.key === key)?.label ?? key
-
   const cleanList = (v: unknown) => (v as string[]).map((s) => s.trim()).filter(Boolean)
 
   const lengthKey = form.target_chars as string

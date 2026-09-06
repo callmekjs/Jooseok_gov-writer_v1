@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import Field from '../components/Field'
 import { ApiError, callApi } from '../lib/api'
-import { CUSTOM_CHARS_MAX, CUSTOM_CHARS_MIN } from '../lib/speech-data'
-import { type FormState, initialForm, speechFields, toApiPayload } from '../lib/speechFields'
+import { CUSTOM_CHARS_MAX, CUSTOM_CHARS_MIN, EVENT_TYPES } from '../lib/speech-data'
+import { type FormState, initialForm, labelOf, speechFields, toApiPayload } from '../lib/speechFields'
 import ResultPanel, { type DraftResult } from './ResultPanel'
 
 export default function WritePage() {
@@ -79,7 +79,12 @@ export default function WritePage() {
         </div>
       )}
 
-      {result && <ResultPanel result={result} />}
+      {result && (
+        <ResultPanel
+          result={result}
+          title={`${form.event_name}_${labelOf(EVENT_TYPES, form.event_type as string)}`}
+        />
+      )}
     </div>
   )
 }
