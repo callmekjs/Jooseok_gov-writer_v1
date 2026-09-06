@@ -5,6 +5,7 @@ import sys
 
 import httpx
 
+API_BASE = os.environ.get("API_BASE", "http://localhost:8010")
 PROVIDER = os.environ.get("TRY_PROVIDER", "openai")
 MODEL = os.environ.get("TRY_MODEL", "gpt-5.6-sol")
 KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
@@ -37,7 +38,7 @@ headers = {
 }
 
 res = httpx.post(
-    "http://localhost:8010/api/speech/draft",
+    f"{API_BASE}/api/speech/draft",
     json=payload, headers=headers, timeout=180.0,
 )
 print("HTTP", res.status_code)
