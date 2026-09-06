@@ -66,3 +66,10 @@ def test_persona_block_carries_an_instruction_label():
     _, user = build_speech_prompt(_base(persona_block="현장에서 답을 찾겠습니다"))
     assert "발화자의 말투" in user
     assert "현장에서 답을 찾겠습니다" in user
+
+
+def test_l4_tells_the_model_to_find_the_speaker_in_the_document():
+    """auto-draft 는 발화자 칸을 못 채운다. 문서에서 찾게 해야 한다."""
+    _, user = build_speech_prompt(_base(), contexts=["11:40 ~ 11:50  축사  군수"])
+    assert "그 사람의 입장에서" in user
+    assert "감사 인사 대상" in user

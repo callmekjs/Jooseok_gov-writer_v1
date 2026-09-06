@@ -1,7 +1,7 @@
 import json
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from policy_writer.common.keys import norm_provider, resolve_user_key
 from policy_writer.common.quality import check_output
@@ -76,7 +76,16 @@ async def draft_with_docs(
     x_llm_provider: str = Header(default=catalog.DEFAULT_PROVIDER),
     x_llm_model: str | None = Header(default=None),
 ) -> dict:
-    payload = DraftIn(input=SpeechInput(**json.loads(input_json)))
+    try:
+        payload = DraftIn(input=SpeechInput(**json.loads(input_json)))
+    except json.JSONDecodeError:
+        raise HTTPException(400, "input_json 을 읽을 수 없습니다. 올바른 JSON 형식인지 확인해 주세요.")
+    except ValidationError as e:
+        first = e.errors()[0]
+        field = ".".join(str(x) for x in first.get("loc", ())) or "입력값"
+        raise HTTPException(400, f"입력값이 올바르지 않습니다 ({field}): {first.get('msg', '')}")
+    except TypeError:
+        raise HTTPException(400, "input_json 은 객체(JSON object) 여야 합니다.")
     uploads = ([plan_file] if plan_file else []) + list(reference_files)
     contexts, file_warnings = await _read_contexts(uploads)
 
@@ -97,7 +106,9 @@ async def auto_draft(
     if not contexts:
         raise HTTPException(400, file_warnings[0] if file_warnings else "파일에서 글자를 뽑지 못했습니다.")
 
-    name = event_name.strip() or plan_file.filename.rsplit(".", 1)[0]
+    name = event_name.strip() or (plan_file.filename or "").rsplit(".", 1)[0].strip()
+    if not name:
+        name = "행사"          # 진짜 행사명은 L4 참고자료에서 모델이 읽는다
     payload = DraftIn(input=SpeechInput(event_name=name, target_chars=1500))
     result = await _run_draft(request, payload, contexts, x_llm_provider, x_llm_model)
     result["warnings"] = file_warnings + result["warnings"]

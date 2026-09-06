@@ -28,7 +28,15 @@ def build_l4_speech(contexts: list[str] | None) -> str:
     if not usable:
         return ""
     body = "\n\n".join(f"[자료 {i}]\n{c}" for i, c in enumerate(usable, 1))
-    return f"# 참고자료\n\n아래는 이번 행사의 참고자료입니다. 사실관계는 이 자료를 따릅니다.\n\n{body}"
+    return (
+        "# 참고자료\n\n"
+        "아래는 이번 행사의 참고자료입니다. 사실관계는 이 자료를 따릅니다.\n"
+        "자료에 이 말씀자료를 누가 낭독하는지(예: 일정표의 '축사 — 군수')가 적혀 있으면,\n"
+        "그 사람의 입장에서 1인칭으로 원고를 쓰십시오. 발화자는 원고를 읽는 본인이므로\n"
+        "감사 인사 대상이나 내빈 명단에 넣으면 안 됩니다.\n"
+        "다만 아래 「이번 행사 정보」에 발화자가 적혀 있으면 그쪽을 우선합니다.\n\n"
+        f"{body}"
+    )
 
 
 def _line(label: str, value: str) -> str:
