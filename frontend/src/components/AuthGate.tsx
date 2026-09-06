@@ -3,7 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { Lock } from 'lucide-react'
 import { APP_PASSWORD_STORAGE_KEY, getJson } from '../lib/api'
 
-type GateStatus = 'checking' | 'locked' | 'open'
+type GateStatus = 'checking' | 'locked' | 'open' | 'misconfigured'
 
 /** App.tsx 를 감싸는 게이트. 서버에 접속 암호(APP_PASSWORD)가 설정돼 있으면
  *  암호를 입력받아 localStorage 에 저장한 뒤에만 실제 화면을 보여준다.
@@ -17,8 +17,15 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    getJson<{ required: boolean }>('/api/auth/required')
-      .then(({ required }) => {
+    getJson<{ required: boolean; misconfigured?: boolean }>('/api/auth/required')
+      .then(({ required, misconfigured }) => {
+        // production 인데 서버에 APP_PASSWORD 가 설정되지 않은 상태 — 어떤 암호를
+        // 넣어도 실제로는 통과되지 않으므로(서버가 유료 라우트를 503 으로 막는다)
+        // "암호 불필요"로 오해하지 않도록 별도 화면을 보여준다.
+        if (misconfigured) {
+          setStatus('misconfigured')
+          return
+        }
         if (!required) {
           setStatus('open')
           return
@@ -55,6 +62,24 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (status === 'open') return <>{children}</>
+
+  if (status === 'misconfigured') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-white via-slate-50 to-blue-50 p-4 sm:p-6">
+        <div className="w-full max-w-sm rounded-2xl border border-red-200 bg-white p-6 sm:p-8">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="rounded-lg bg-red-50 p-2">
+              <Lock className="h-5 w-5 text-red-600" />
+            </span>
+            <h1 className="text-lg font-semibold text-slate-900">서버 설정 오류</h1>
+          </div>
+          <p className="text-sm text-slate-600">
+            서버에 접속 암호가 설정되지 않았습니다. 관리자에게 문의해 주세요.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-white via-slate-50 to-blue-50 p-4 sm:p-6">

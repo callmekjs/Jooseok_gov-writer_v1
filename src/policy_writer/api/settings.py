@@ -56,8 +56,16 @@ class AuthCheckIn(BaseModel):
 
 @router.get("/api/auth/required")
 def auth_required() -> dict:
-    """화면이 초기 렌더에 부른다 — 암호를 안 건 환경에서는 입력 화면을 띄우지 않아야 한다."""
-    return {"required": bool(get_settings().app_password)}
+    """화면이 초기 렌더에 부른다 — 암호를 안 건 환경에서는 입력 화면을 띄우지 않아야 한다.
+
+    production 인데 APP_PASSWORD 가 비어 있으면(배포자의 설정 누락) 그냥
+    {"required": False}를 내려주지 않는다 — 화면이 "암호 불필요"로 오해해 곧장 앱을
+    보여주면 안 되기 때문이다. 이 상태에서는 require_app_password 가 모든 유료
+    라우트를 503 으로 막고 있으므로, misconfigured 플래그로 화면에 문제를 알린다."""
+    settings = get_settings()
+    if settings.environment == "production" and not settings.app_password:
+        return {"required": True, "misconfigured": True}
+    return {"required": bool(settings.app_password)}
 
 
 @router.post("/api/auth/check")
