@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { FieldSpec } from '../lib/speechFields'
 
 type Props = {
@@ -7,6 +8,15 @@ type Props = {
 }
 
 export default function Field({ spec, value, onChange }: Props) {
+  // list 항목의 안정적인 key. key={i} 를 쓰면 중간 항목을 지웠을 때
+  // React 가 뒤 항목의 DOM 을 재사용해 표시값이 한 칸씩 밀린다.
+  const idsRef = useRef<string[]>([])
+
+  const nextId = () =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+
   const label = (
     <label className="mb-1 block text-sm font-medium">
       {spec.label}
@@ -72,21 +82,27 @@ export default function Field({ spec, value, onChange }: Props) {
 
   if (spec.type === 'list') {
     const items = value as string[]
+
+    // 항목 수에 맞춰 id 목록을 늘리거나 줄인다
+    while (idsRef.current.length < items.length) idsRef.current.push(nextId())
+    if (idsRef.current.length > items.length) idsRef.current.length = items.length
+
+    const removeAt = (i: number) => {
+      idsRef.current.splice(i, 1)
+      onChange(items.filter((_, j) => j !== i))
+    }
+
     return (
       <div className="mb-4">
         {label}
         {items.map((item, i) => (
-          <div key={i} className="mb-1 flex gap-2">
+          <div key={idsRef.current[i]} className="mb-1 flex gap-2">
             <input
               value={item}
               onChange={(e) => onChange(items.map((x, j) => (j === i ? e.target.value : x)))}
               className="flex-1 rounded border px-3 py-2"
             />
-            <button
-              type="button"
-              onClick={() => onChange(items.filter((_, j) => j !== i))}
-              className="rounded border px-3"
-            >
+            <button type="button" onClick={() => removeAt(i)} className="rounded border px-3">
               −
             </button>
           </div>

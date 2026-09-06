@@ -1,4 +1,4 @@
-import { AUDIENCES, EVENT_TYPES, LENGTHS, SPEAKER_ROLES } from './speech-data'
+import { AUDIENCES, CUSTOM_CHARS_MAX, CUSTOM_CHARS_MIN, EVENT_TYPES, LENGTHS, SPEAKER_ROLES } from './speech-data'
 
 export type FieldType = 'text' | 'textarea' | 'select' | 'multiselect' | 'list'
 
@@ -42,15 +42,24 @@ export function initialForm(): FormState {
   return s
 }
 
+/** 사용자 지정 분량을 허용 범위로 강제한다.
+ *  제출이 form submit 이 아니라 onClick 이라 input 의 min/max 는 강제되지 않는다. */
+export function clampCustomChars(n: number): number {
+  if (!Number.isFinite(n)) return 1500
+  return Math.min(CUSTOM_CHARS_MAX, Math.max(CUSTOM_CHARS_MIN, Math.round(n)))
+}
+
 /** ★ 화면은 키를 쓰고, API 로는 한글 라벨을 보낸다. */
 export function toApiPayload(form: FormState, customChars: number) {
   const labelOf = (opts: readonly { key: string; label: string }[], key: string) =>
     opts.find((o) => o.key === key)?.label ?? key
 
+  const cleanList = (v: unknown) => (v as string[]).map((s) => s.trim()).filter(Boolean)
+
   const lengthKey = form.target_chars as string
   const chars =
     lengthKey === 'custom'
-      ? customChars
+      ? clampCustomChars(customChars)
       : LENGTHS.find((l) => l.key === lengthKey)!.chars
 
   return {
@@ -62,11 +71,11 @@ export function toApiPayload(form: FormState, customChars: number) {
     speaker_role: labelOf(SPEAKER_ROLES, form.speaker_role as string),
     speaker_organization: form.speaker_organization as string,
     audience: (form.audience as string[]).map((k) => labelOf(AUDIENCES, k)).join(', '),
-    vip_list: form.vip_list as string[],
+    vip_list: cleanList(form.vip_list),
     target_chars: chars,
-    key_messages: form.key_messages as string[],
-    quotes_or_anecdotes: form.quotes_or_anecdotes as string[],
-    avoid_phrases: form.avoid_phrases as string[],
+    key_messages: cleanList(form.key_messages),
+    quotes_or_anecdotes: cleanList(form.quotes_or_anecdotes),
+    avoid_phrases: cleanList(form.avoid_phrases),
     persona_block: form.persona_block as string,
   }
 }
