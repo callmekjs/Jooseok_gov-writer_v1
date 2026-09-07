@@ -99,13 +99,6 @@ export default function SettingsPage() {
               말씀자료 1건당 예상 비용입니다. 회사별로 마지막에 고른 등급을 따로 기억합니다.
             </p>
           </section>
-
-          <section className={CARD}>
-            <h2 className="mb-3 font-semibold text-slate-900">API 키</h2>
-            <p className="text-sm text-slate-600">
-              서버에 키가 설정돼 있어 직접 입력하지 않아도 됩니다.
-            </p>
-          </section>
         </div>
 
         <footer className="mt-12 text-center text-xs text-slate-400 sm:mt-16">
