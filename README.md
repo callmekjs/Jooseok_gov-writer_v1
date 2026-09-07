@@ -21,7 +21,7 @@
 | **모델 선택** | 회사만 선택. 모델 id는 코드에 하드코딩 | **회사 + 등급 선택.** 허용목록을 서버가 검증 |
 | **1건당 비용** | 안 보임 | **화면에 원 단위 표시** (약 2원 ~ 70원) |
 | LLM 회사 | Anthropic · Gemini · OpenAI (3사) | **OpenAI · Anthropic (2사)** |
-| API 엔드포인트 | 20개 이상 | **11개** |
+| API 엔드포인트 | 20개 이상 | **10개** |
 | RAG · 공공데이터 | 있음 (pgvector + 정책브리핑) | 없음 |
 | 페르소나 저장소 | 있음 (`/personas`) | 없음 — **폼의 `persona_block` 입력칸은 유지** |
 | 공통 함수 | `_resolve_user_key` 3벌, JSON 파서 2벌 | **`common/`에 1벌씩** |
@@ -77,7 +77,7 @@
 
 - **작성 이력** (`/history`) — 다시 열기, 모델·비용 함께 표시
 - **다운로드** — Markdown (.md) + 한컴오피스 (.hwpx). 한글 파일명이 깨지지 않습니다
-- **API 키 사용자 보관** — localStorage에만 저장. 서버 디스크·DB·로그에 남기지 않습니다
+- **API 키는 서버가 보관** — `.env`(로컬) / Render 환경변수(배포)로 설정하고 서버가 직접 호출에 씁니다. 요청 헤더로 개인 키를 대신 실어 보낼 수도 있으며, 어느 쪽이든 서버 디스크·DB·로그에는 남기지 않습니다
 
 ### 화면
 
@@ -163,7 +163,7 @@
 - **프론트엔드**: React SPA (Vite + TypeScript + Tailwind + lucide-react + react-router-dom)
 - **DB**: Supabase (PostgreSQL) — 표 1개. **없어도 글 생성은 됩니다** (이력만 안 남음)
 - **호스팅**: Render (단일 인스턴스, 정적 파일 통합 서빙)
-- **LLM**: OpenAI / Anthropic — 사용자 키를 요청 헤더로 전달
+- **LLM**: OpenAI / Anthropic — **서버가 키를 보관하고 직접 호출** (요청 헤더로 개인 키를 대신 실어 보낼 수도 있음)
 - **문서 변환**: python-hwpx (HWPX 생성) / pypdf · python-docx · ZIP 파싱 (입력 추출)
 
 ### 요청 흐름
@@ -207,7 +207,7 @@ L1~L3은 요청과 무관하게 항상 같은 글이라 **상수 파일**, L4~L5
 
 ## API 엔드포인트
 
-**총 11개.** 모든 AI 호출은 아래 헤더를 공통으로 받습니다.
+**총 10개.** 모든 AI 호출은 아래 헤더를 공통으로 받습니다.
 
 ```
 X-LLM-Provider: openai | anthropic        (없으면 openai)
@@ -235,7 +235,6 @@ X-OpenAI-Key | X-Anthropic-Key            (없으면 401)
 | 메서드 | 엔드포인트 | 설명 |
 |---|---|---|
 | GET | `/api/models` | 회사별 모델 목록 + 등급 + 1건당 원화 |
-| POST | `/api/validate-key` | API 키 연결 시험 |
 | GET | `/api/local-keys` | `.env`의 로컬 키 (**development 전용**, production은 빈 응답) |
 
 ### 이력 · 관리
@@ -314,10 +313,12 @@ Supabase 대시보드 → SQL Editor → New query → `supabase/migrations/001_
 
 개발 시 Vite dev server(5174)가 `/api/*` 요청을 백엔드(**8011**)로 프록시합니다.
 
-### 4. API 키 등록
+### 4. 회사·모델 등급 선택
 
-브라우저에서 `/settings` 진입 → 회사(OpenAI / Anthropic) 선택 → 모델 등급 선택 → 키 입력 → **[연결 시험]**.
-키는 localStorage에만 저장되며, 각 요청 시 헤더로만 전달됩니다.
+브라우저에서 `/settings` 진입 → 회사(OpenAI / Anthropic) 선택 → 모델 등급 선택.
+API 키는 `.env`(서버)에 이미 설정돼 있어 화면에서 따로 입력하지 않습니다 — 설정 화면의
+"API 키" 섹션은 "서버에 키가 설정돼 있어 직접 입력하지 않아도 됩니다"라는 안내만 보여줍니다.
+`APP_PASSWORD`를 설정했다면 접속 시 암호 입력 화면이 먼저 뜹니다.
 
 > **⚠️ 커맨드라인으로 시험할 때**: PowerShell `ConvertTo-Json`은 한글을 깨뜨립니다.
 > AI가 `???`를 받아 이상한 글을 씁니다. **Python 스크립트나 JSON 파일로 보내세요.**
@@ -326,24 +327,31 @@ Supabase 대시보드 → SQL Editor → New query → `supabase/migrations/001_
 
 ## 환경변수
 
-`.env.example` 참고. **비밀키는 4개**입니다.
+`.env.example` 참고. **비밀키는 5개**입니다.
 
 ```bash
 ENVIRONMENT=development
 
-# AI 키 — 로컬 개발 전용. 최소 하나. 둘 다 넣으면 화면에서 골라 씁니다.
-# ⚠️ 배포할 때는 반드시 비워두세요. 접속자 누구나 가져갈 수 있습니다.
+# AI 키 — 서버가 이 키를 직접 들고 호출합니다. 최소 하나. 둘 다 넣으면 화면에서 골라 씁니다.
+# ⚠️ 배포할 때도 값을 채우세요. 비우면 유료 라우트(말씀자료 생성 등)가 전부 401이 됩니다.
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 
 # Supabase — 없어도 글 생성은 됩니다 (이력만 안 남음)
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# 접속 암호 — 서버 키 + 접속 암호 기능. 비워두면(로컬 개발 등) 암호 검사를 건너뜁니다.
+# ⚠️ 배포할 때는 반드시 값을 채우세요. 비어 있으면 production에서 유료 라우트가 503으로 막힙니다.
+# 영문·숫자·기호만 사용하세요. 한글 등은 HTTP 헤더로 전달할 수 없습니다.
+APP_PASSWORD=
 ```
 
 | 주의 | 내용 |
 |---|---|
 | 🔴 `ENVIRONMENT` | `production`이 아니면 `/api/local-keys`가 **인증 없이 AI 키를 공개합니다.** 배포 시 반드시 설정 |
+| 🔴 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | **서버가 직접 호출에 씁니다.** 배포 환경에도 값이 있어야 합니다 — 비우면 로그인 이후 모든 생성 요청이 401 |
+| 🔴 `APP_PASSWORD` | 비어 있으면 production에서 유료 라우트가 503. 앞뒤 공백·개행·비-ASCII 문자가 섞여도 (틀린 암호가 아니라) 503 "서버 설정 오류"로 알려줍니다 |
 | 🟠 `.env` 수정 후 | 설정은 프로세스당 **한 번만** 읽습니다 (`@lru_cache`). 고치면 **서버를 껐다 켜세요** |
 | 🟠 `SUPABASE_URL` | 끝에 `/rest/v1/`를 **붙이지 마세요.** 코드가 붙입니다 |
 | — | `SUPABASE_ANON_KEY`는 사용하지 않습니다 |
@@ -366,8 +374,9 @@ SUPABASE_SERVICE_ROLE_KEY=
 ENVIRONMENT=production        ← 🔴 반드시. 빠지면 AI 키가 공개됩니다
 SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
-OPENAI_API_KEY=               ← 비워둡니다
-ANTHROPIC_API_KEY=            ← 비워둡니다
+OPENAI_API_KEY=...            ← 🔴 채웁니다. 서버가 이 키로 직접 호출합니다 (비우면 401)
+ANTHROPIC_API_KEY=...         ← 🔴 채웁니다. 서버가 이 키로 직접 호출합니다 (비우면 401)
+APP_PASSWORD=...              ← 🔴 채웁니다. 비면 503, 앞뒤 공백이 섞여도 503
 ```
 
 ### 배포 직후 확인 3가지
@@ -503,7 +512,7 @@ ALTER TABLE public.drafts ENABLE ROW LEVEL SECURITY;
 | # | 단계 | 시간 | 완료 확인 | 상태 |
 |---|---|---:|---|:---:|
 | 1 | 준비 — 폴더·`.gitignore`·`config.py`·`server.py` | 1h | `:8011/health` → `{"status":"ok"}` | ☑ |
-| 2 | **화면 뼈대 + 배포** | 3h | **남의 폰으로** Render 주소 접속 성공 | ☑ |
+| 2 | **화면 뼈대 + 배포** | 3h | **남의 폰으로** Render 주소 접속 성공 | ☐ |
 | 3 | AI 연결(2사) + 키 검증 + 설정 화면 | 2.5h | 틀린 키 → "인증 실패"라고 **이유가** 뜸 | ☑ |
 | 4 | **모델 카탈로그 + `/api/models` + 드롭다운** | 1.5h | 회사를 바꾸면 목록·비용이 바뀜 | ☑ |
 | 5 | 프롬프트 L1·L2·L3 + `builder.py` | 3h | Python 호출로 6단 축사가 나옴 | ☑ |
@@ -513,7 +522,7 @@ ALTER TABLE public.drafts ENABLE ROW LEVEL SECURITY;
 | # | 단계 | 시간 | 완료 확인 | 상태 |
 |---|---|---:|---|:---:|
 | 6 | 작성 화면 (14칸 전부) | 3h | **★ 1차 완료** — 폼 → 버튼 → 축사 | ☑ |
-| 7 | 다운로드 (md + hwpx) | 2h | 한글 프로그램에서 열림. 파일명 안 깨짐 | ☑ |
+| 7 | 다운로드 (md + hwpx) | 2h | 한글 프로그램에서 열림. 파일명 안 깨짐 | ☐ |
 | 8 | **유형 8종 연결 + 유형별 검증** | 2h | 8개가 다 동작하고 톤이 다름 | ☑ |
 | 9 | 파일 올려서 자동 작성 | 3h | **원본에 없는 날짜·인명이 없음** | ☑ |
 | 10 | Supabase + 작성 이력 | 2h | **Supabase를 꺼도 축사 생성은 됨** | ☑ |
@@ -545,10 +554,10 @@ ALTER TABLE public.drafts ENABLE ROW LEVEL SECURITY;
 
 ### 1. 사용자 API 키 보호
 
-- LLM 키는 브라우저 localStorage에만 저장하고, 각 요청 시 헤더로만 전달합니다 (`X-OpenAI-Key`, `X-Anthropic-Key`)
-- 서버 디스크·DB·로그에 **저장하지 않습니다**
-- 🔴 **`.env`의 AI 키는 로컬 개발 전용입니다.** `GET /api/local-keys`가 **인증 없이** 이 값을 브라우저에 내려주고,
-  막는 장치는 `ENVIRONMENT=production` 하나뿐입니다. 배포 시 이 변수를 반드시 설정하고, 배포 후 해당 주소를 직접 열어 확인하세요
+- **서버가 `.env`(로컬) / Render 환경변수(배포)의 키를 직접 보관하고 호출에 씁니다.** 사용자가 원하면 요청 헤더(`X-OpenAI-Key`, `X-Anthropic-Key`)로 자신의 키를 대신 실어 보낼 수도 있습니다
+- 어느 경로로 들어온 값이든 서버 디스크·DB·로그에 **저장하지 않습니다**
+- `APP_PASSWORD` 접속 암호 게이트가 유료(AI 호출) 라우트를 막습니다 — 암호를 아는 사람만 서버가 든 키를 쓸 수 있습니다
+- 🔴 **`GET /api/local-keys`는 `.env`의 AI 키를 인증 없이 그대로 브라우저에 내려줍니다.** 막는 장치는 `ENVIRONMENT=production` 하나뿐입니다. 배포 시 이 변수를 반드시 설정하고, 배포 후 해당 주소를 직접 열어 `{"keys":{}}`인지 확인하세요
 - `.gitignore`를 **첫 커밋 전에** 만듭니다. 키가 한 번 GitHub에 올라가면 지워도 기록에 남습니다
 
 ### 2. 모델 허용목록 검증

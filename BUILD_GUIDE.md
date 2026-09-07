@@ -41,8 +41,8 @@ README를 쓸 때 이 문서의 목차와 표를 그대로 옮겨 쓸 수 있도
 문서 유형 : 8개 (축사·기념사·신년사·격려사·환영사·개회사·이임사·서면축사)
 기틀      : 6단 (서면축사만 4단) — 유형 8개가 같은 기틀을 공유한다
 화면      : 4개 (/ , /write , /history , /settings)
-API       : 11개
-모델      : 5개 (OpenAI 3등급 + Anthropic 2등급)
+API       : 10개
+모델      : 6개 (OpenAI 3등급 + Anthropic 3등급)
 외부 서비스: 4곳 (AI 회사 · GitHub · Render · Supabase)
 ```
 
@@ -717,13 +717,18 @@ def resolve_user_key(request: Request, provider: str) -> str:
 
 ---
 
-### ③-5 엔드포인트 11개
+### ③-5 엔드포인트 10개
+
+> 🔴 **2026-09-07 업데이트**: `POST /api/validate-key`(원래 3단계에서 만듦)는 지웠다.
+> 클라이언트가 키를 들고 있던 옛 모델의 마지막 흔적이었고, JSON 바디로 받은 키를
+> 검증 없이 곧장 `call_llm()`에 넘겨 헤더 검증(위 ③-4)을 비껴갔다 — 부르는 곳도
+> 없었다(`SettingsPage.tsx`에는 키 입력칸도 [연결 시험] 버튼도 없다). 아래 표는
+> 삭제 후 기준이다. 원래 3단계가 만든 것 중 `/api/local-keys`만 남는다.
 
 | 메서드 | 주소 | 본문 | 만드는 단계 |
 |---|---|---|---|
 | `GET` | `/health` | — | 1 |
 | `GET` | `/api/info` | — | 1 |
-| `POST` | `/api/validate-key` | `{ provider, api_key }` | 3 |
 | `GET` | `/api/local-keys` | — (development 전용) | 3 |
 | `GET` | `/api/models` | — | 4 |
 | `POST` | `/api/speech/draft` | `{ input, reference_texts, max_tokens, temperature }` | 5 |
@@ -733,7 +738,7 @@ def resolve_user_key(request: Request, provider: str) -> str:
 | `POST` | `/api/speech/auto-draft` | 행사계획서 파일만으로 폼 추정 후 작성 | 9 |
 | `GET` `DELETE` | `/api/drafts` · `/api/drafts/{id}` | `?limit=20` | 10 |
 
-**총 11개.** 원본은 20개가 넘는다.
+**총 10개.** 원본은 20개가 넘는다.
 
 ---
 
@@ -1337,7 +1342,7 @@ AI 출력은 **빈 줄로 단락이 나뉜다.** 단락 안의 단일 줄바꿈�
 
 | # | 규칙 | 왜 |
 |---|---|---|
-| 1 | LLM 키는 **요청 헤더로만**. 서버 디스크·DB·로그에 저장 금지 | 저장하는 순간 유출 책임이 생긴다 |
+| 1 | LLM 키는 **서버가 환경변수로 직접 보관·호출**(기본) 또는 **요청 헤더로 대신 받기**(선택). 어느 쪽이든 서버 디스크·DB·로그에 저장 금지 | 저장하는 순간 유출 책임이 생긴다 |
 | 2 | `ENVIRONMENT=production`이면 `/api/local-keys`는 **빈 응답** | 아래 🔴 참고 |
 | 3 | **모델 id는 서버 허용목록으로 검증** | 헤더는 사용자가 바꿀 수 있다 |
 | 4 | 인용·통계는 사용자가 준 것만. 없으면 비우거나 "자료에 없음" | AI가 숫자를 지어내면 공문서로 못 쓴다 |
@@ -1372,19 +1377,22 @@ dist/
 *.tsbuildinfo
 ```
 
-### `.env` — 비밀키 4개
+### `.env` — 비밀키 5개
 
 ```bash
 ENVIRONMENT=development
 
-# AI 키 (로컬 개발 전용, 최소 하나. 둘 다 넣으면 화면에서 골라 씀)
-# ⚠️ 배포할 때는 반드시 비워두세요. 접속자 누구나 가져갈 수 있습니다.
+# AI 키 (서버가 직접 호출에 씀, 최소 하나. 둘 다 넣으면 화면에서 골라 씀)
+# ⚠️ 배포할 때도 값을 채우세요. 비우면 유료 라우트가 전부 401이 됩니다.
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 
 # Supabase (10단계부터)
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# 접속 암호 — 배포할 때 반드시 채우세요. 비어 있으면 production에서 유료 라우트가 503으로 막힙니다.
+APP_PASSWORD=
 ```
 
 ---
@@ -1421,8 +1429,9 @@ FastAPI 한 대가 `static/`(화면)과 `/api`(서버)를 **같이** 서빙한�
 ENVIRONMENT=production      ← 🔴 반드시. 빠지면 키가 공개된다
 SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
-OPENAI_API_KEY=             ← 비워둔다
-ANTHROPIC_API_KEY=          ← 비워둔다
+OPENAI_API_KEY=...          ← 🔴 채운다. 서버가 이 키로 직접 호출한다 (비우면 401)
+ANTHROPIC_API_KEY=...       ← 🔴 채운다. 서버가 이 키로 직접 호출한다 (비우면 401)
+APP_PASSWORD=...            ← 🔴 채운다. 비면 503, 앞뒤 공백이 섞여도 503
 ```
 
 ### ④ 배포 완료 확인
@@ -1709,13 +1718,13 @@ Body:
 
 [모델]
   OpenAI    인턴 gpt-4o-mini  / 비서 gpt-5.6-terra / 선임비서 gpt-5.6-sol
-  Anthropic 인턴 claude-haiku-4-5 / 비서 claude-sonnet-4-5-20250929
-  Anthropic 선임비서는 비워 둠 (검증 못 함)
+  Anthropic 인턴 claude-haiku-4-5 / 비서 claude-sonnet-4-5-20250929 / 선임비서 claude-opus-4-5-20251101
+  6개 전부 실측 완료(200 확인) — 검증하지 않은 id 는 목록에 넣지 않는다
   ⚠️ 목록에 없는 id 를 지어내지 말 것
 
 [외부]
   AI 회사 1곳 이상 · GitHub · Render · Supabase = 4곳
-  비밀키 4개 · 모델 5개 · API 11개 · 화면 4개 · 표 1개
+  비밀키 5개 · 모델 6개 · API 10개 · 화면 4개 · 표 1개
 
 [포트폴리오 무기]
   같은 축사를 모델별로 돌린 비교표
