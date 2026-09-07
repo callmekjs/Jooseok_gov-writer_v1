@@ -3,11 +3,9 @@
 🔴 컨트롤러 추가지시(2026-09-07) 반영판 — PLAN 의 원본 스크립트를 그대로 쓰면
 접속암호 게이트가 나중에 추가된 탓에 전부 401 로 실패한다. 달라진 점:
 
-  - base URL 기본값을 8011 로 바꿈. 8010·5173 은 이 PC 의 다른 프로젝트 전용
-    포트라 절대 쓰면 안 된다 (죽이는 것도 금지). 필요하면 COMPARE_BASE_URL
-    환경변수로 다른 포트를 가리킬 수 있다 — 단 8010/5173 은 아래에서 막는다.
-  - X-App-Password 헤더를 추가했다. 로컬 .env 의 APP_PASSWORD 를
-    get_settings() 로 읽는다 (스크립트라 G7 대상이 아니다).
+  - base URL 기본값·포트 가드·X-App-Password 헤더를 _common.py 로 옮겼다.
+    Task 13 에서 try_draft.py · try_all_types.py 도 같은 게 필요해졌기 때문에,
+    같은 8줄을 네 번 복사하지 않는다 (G9). 주소는 COMPARE_BASE_URL 로 바꾼다.
   - 키는 헤더로 보내지 않는다 — 서버가 이미 .env 에 OPENAI_API_KEY /
     ANTHROPIC_API_KEY 를 갖고 있어서, 헤더가 없으면 keys.resolve_user_key()
     가 서버 키로 자동 대체한다 (헤더 전달 / 서버 폴백 중 더 간단한 후자만 씀).
@@ -16,26 +14,14 @@
 콘솔에 모델별 input_tokens/output_tokens 를 함께 찍는다 — llm/cost.py 의
 TYPICAL_INPUT_TOKENS/TYPICAL_OUTPUT_TOKENS 상수를 실측치로 보정하는 근거 자료다.
 """
-import os
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import httpx
 
-from policy_writer.config import get_settings
+from _common import base_headers, resolve_base_url
 
-BASE_URL = os.environ.get("COMPARE_BASE_URL", "http://127.0.0.1:8011").rstrip("/")
-# 포트 번호로만 판단한다 — 문자열 부분일치는 대소문자(LOCALHOST)·표기 차이
-# ([::1], 0.0.0.0, 127.1)에 뚫리고 80100 같은 무관한 포트에 오탐도 난다.
-# 8010/5173 금지는 예외 없는 규칙이라 호스트를 따지지 않고 포트만 막는다.
-_FORBIDDEN_PORTS = {8010, 5173}
-try:
-    _base_port = urlsplit(BASE_URL).port   # 범위 밖 포트(예: 80100)는 여기서 ValueError
-except ValueError:
-    _base_port = None                      # 8010/5173 일 수 없으니 이 가드에서는 통과시킨다
-if _base_port in _FORBIDDEN_PORTS:
-    raise SystemExit(f"8010/5173 은 다른 프로젝트 전용 포트입니다 — 이 스크립트에서 쓸 수 없습니다: {BASE_URL}")
+BASE_URL = resolve_base_url("COMPARE_BASE_URL")
 
 TARGET = 1500
 PAYLOAD = {"input": {
@@ -54,8 +40,7 @@ PAYLOAD = {"input": {
     "persona_block": "현장에서 답을 찾겠습니다",
 }}
 
-APP_PASSWORD = get_settings().app_password
-BASE_HEADERS = {"X-App-Password": APP_PASSWORD} if APP_PASSWORD else {}
+BASE_HEADERS = base_headers()
 
 CATALOG = httpx.get(f"{BASE_URL}/api/models", timeout=10).json()
 

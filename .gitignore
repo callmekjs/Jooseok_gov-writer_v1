@@ -17,3 +17,7 @@ dist/
 # 요약본은 docs/samples/gunwi-event-schedule-sample.md 에 출처와 함께 커밋한다.
 docs/*.csv
 docs/*.xlsx
+
+# Task 13 프롬프트 측정 표본 (수십 건씩 쌓인다). 숫자는 보고서에 남기고
+# 표본 자체는 커밋하지 않는다 — scripts/measure_defects.py 가 여기에 쓴다.
+docs/measure/

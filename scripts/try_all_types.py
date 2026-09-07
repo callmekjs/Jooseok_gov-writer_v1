@@ -1,45 +1,34 @@
-"""8종을 한 번씩 돌려 결과를 docs/type-check.md 에 쌓는다."""
+"""8종을 한 번씩 돌려 결과를 docs/type-check.md 에 쌓는다.
+
+접속 주소·포트 가드·접속암호 헤더는 _common.py 에 모여 있다 (G9).
+API_BASE 환경변수로 주소를, OUT 환경변수로 저장 파일을 바꿀 수 있다.
+Task 13 의 수정 전/후 비교는 OUT 을 바꿔 두 파일을 나란히 남기는 식으로 쓴다.
+"""
 import os
-import sys
 import time
 from pathlib import Path
 
 import httpx
 
-TYPES = ["축사", "기념사", "신년사", "격려사", "환영사", "개회사", "이임사", "서면축사"]
-TARGET = {"격려사": 900, "환영사": 600}      # 짧은 유형은 목표를 낮춘다
+from _common import TYPES, base_headers, resolve_base_url, sample_input
 
-API_BASE = os.environ.get("API_BASE", "http://localhost:8010")
+API_BASE = resolve_base_url("API_BASE")
 PROVIDER = os.environ.get("TRY_PROVIDER", "openai")
 MODEL = os.environ.get("TRY_MODEL", "gpt-5.6-sol")
-KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-if not KEY:
-    sys.exit("환경변수에 키를 설정하세요.")
 
-headers = {
-    "X-LLM-Provider": PROVIDER,
-    "X-LLM-Model": MODEL,
-    "X-OpenAI-Key" if PROVIDER == "openai" else "X-Anthropic-Key": KEY,
-}
+# 키는 헤더로 보내지 않는다 — 서버가 .env 의 키로 대체한다 (_common.py 설명 참고).
+headers = {**base_headers(), "X-LLM-Provider": PROVIDER, "X-LLM-Model": MODEL}
 
-out = Path("docs/type-check.md")
+out = Path(os.environ.get("OUT", "docs/type-check.md"))
 out.parent.mkdir(exist_ok=True)
 lines = [f"# 유형 8종 검증 ({MODEL})\n"]
 
 for t in TYPES:
-    target = TARGET.get(t, 1500)
-    payload = {"input": {
-        "event_name": "청년 주거지원 정책 설명회",
-        "event_type": t,
-        "event_date": "2026년 9월 12일",
-        "event_location": "정부세종청사 대강당",
-        "speaker_name": "김민수", "speaker_role": "장관",
-        "speaker_organization": "국토교통부",
-        "audience": "청년, 공무원",
-        "target_chars": target,
-        "key_messages": ["청년 월세 지원 확대"],
-        "avoid_phrases": ["만감이 교차"],
-    }}
+    # 입력은 _common.sample_input 한 곳에만 있다 — measure_defects.py 의 반복
+    # 측정과 같은 입력이어야 두 결과를 나란히 비교할 수 있다 (G9).
+    fields = sample_input(t)
+    target = fields["target_chars"]
+    payload = {"input": fields}
     started = time.time()
     res = httpx.post(f"{API_BASE}/api/speech/draft",
                      json=payload, headers=headers, timeout=180.0)

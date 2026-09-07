@@ -1,17 +1,19 @@
-"""PowerShell ConvertTo-Json 은 한글을 깨뜨린다. 이 스크립트로 시험한다."""
+"""PowerShell ConvertTo-Json 은 한글을 깨뜨린다. 이 스크립트로 시험한다.
+
+접속 주소·포트 가드·접속암호 헤더는 _common.py 에 모여 있다 (G9).
+API_BASE 환경변수로 주소를 바꿀 수 있다. 기본값은 127.0.0.1:8011.
+"""
 import json
 import os
 import sys
 
 import httpx
 
-API_BASE = os.environ.get("API_BASE", "http://localhost:8010")
+from _common import base_headers, resolve_base_url
+
+API_BASE = resolve_base_url("API_BASE")
 PROVIDER = os.environ.get("TRY_PROVIDER", "openai")
 MODEL = os.environ.get("TRY_MODEL", "gpt-5.6-sol")
-KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-
-if not KEY:
-    sys.exit("환경변수 OPENAI_API_KEY 또는 ANTHROPIC_API_KEY 를 설정하세요.")
 
 payload = {
     "input": {
@@ -31,11 +33,8 @@ payload = {
         "persona_block": "현장에서 답을 찾겠습니다",
     }
 }
-headers = {
-    "X-LLM-Provider": PROVIDER,
-    "X-LLM-Model": MODEL,
-    "X-OpenAI-Key" if PROVIDER == "openai" else "X-Anthropic-Key": KEY,
-}
+# 키는 헤더로 보내지 않는다 — 서버가 .env 의 키로 대체한다 (_common.py 설명 참고).
+headers = {**base_headers(), "X-LLM-Provider": PROVIDER, "X-LLM-Model": MODEL}
 
 res = httpx.post(
     f"{API_BASE}/api/speech/draft",
