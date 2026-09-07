@@ -18,7 +18,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false                # 위와 동일 — Render 대시보드에서만 관리한다 (OPENAI_API_KEY 주석 참고).
       - key: APP_PASSWORD
-        sync: false                # 위와 동일 — Render 대시보드에서만 관리한다. 비어 있으면(production) 접속 암호 없이 열리는 게 아니라 fail-closed 로, AI 를 호출하는 모든 유료 라우트가 503 으로 잠긴다 (common/auth.py require_app_password).
+        sync: false                # 위와 동일 — Render 대시보드에서만 관리한다. 비어 있으면(production) 접속 암호 없이 열리는 게 아니라 fail-closed 로, AI 를 호출하는 모든 유료 라우트뿐 아니라 /api/drafts(작성 이력 조회·삭제)도 503 으로 잠긴다 (common/auth.py require_app_password).
       - key: SUPABASE_URL
         sync: false                # 선택 항목 — 초안 이력 저장 기능에만 쓰인다. 비어 있어도 앱은 정상 동작하고 이력 저장만 조용히 꺼진다 (db/drafts.py is_configured). Render 대시보드에서만 관리한다.
       - key: SUPABASE_SERVICE_ROLE_KEY
