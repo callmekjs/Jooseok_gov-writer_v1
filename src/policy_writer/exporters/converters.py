@@ -28,7 +28,12 @@ def to_hwpx_bytes(title: str, text: str) -> bytes:
     doc = HwpxDocument.new()
     doc.add_paragraph(title)
     doc.add_paragraph("")
-    for p in split_paragraphs(text):
+    # 단락 "사이"에만 빈 줄을 넣는다. 단락마다 뒤에 붙이면 파일 끝에 빈 문단이
+    # 하나 남는다. to_markdown 의 "\n\n".join(...) 과 같은 규칙이다 — 한글
+    # 프로그램에서도 마크다운과 똑같이 단락이 떨어져 보여야 한다.
+    for i, p in enumerate(split_paragraphs(text)):
+        if i:
+            doc.add_paragraph("")
         doc.add_paragraph(p)
 
     with tempfile.TemporaryDirectory() as d:
