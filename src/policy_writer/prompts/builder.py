@@ -61,7 +61,7 @@ def build_l5_speech(input: SpeechInput) -> str:
         _list_block("주요 참석자 (직급 순)", input.vip_list),
         _line("목표 글자수", f"{input.target_chars}자"),
         _list_block("반드시 넣을 핵심 메시지", input.key_messages),
-        _list_block("쓸 수 있는 통계·일화", input.quotes_or_anecdotes),
+        _list_block("반드시 넣을 통계·일화", input.quotes_or_anecdotes),
         _list_block("피할 표현 (어떤 형태로도 쓰지 말 것)", input.avoid_phrases),
     ]
     facts = "\n".join(r for r in rows if r)

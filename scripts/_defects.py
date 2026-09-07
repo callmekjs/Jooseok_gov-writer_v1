@@ -76,3 +76,38 @@ def thanked_as_guest(text: str, patterns: list[str]) -> list[str]:
 def honorific_after(text: str, name: str) -> bool:
     """이름 뒤에 "님"이 붙었다 = 남을 부르는 말이다. 자기소개는 "님"을 안 쓴다."""
     return bool(name) and bool(re.search(rf"{re.escape(name)}\s*님", text))
+
+
+# ── B4 통계 미사용 ──────────────────────────────────────────────────────────
+# 실제 사용에서 관찰된 결함: 핵심 메시지 3개는 연도·숫자까지 그대로 다 쓰였는데
+# "인용할 통계" 칸에 넣은 한 줄만 통째로 빠져 "1,200"이 원고 어디에도 없었다.
+#
+# 이 결함의 짝은 L1·L3 의 "입력에 없는 숫자를 만들지 않는다" 규칙이다. 통계를
+# 쓰게 만드는 수정이 모델을 숫자에 굶주리게 만들면 그건 개선이 아니라 회귀다.
+# 그래서 B4 는 언제나 대조군(통계 칸을 비운 같은 입력)과 함께 잰다.
+
+_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?\s*[만억조천]?")
+
+
+def number_tokens(text: str) -> list[str]:
+    """숫자를 견줄 수 있는 형태로 뽑는다. "1,200" 과 "1200" 은 같은 수로 본다.
+
+    만·억·조·천은 토큰에 붙여 둔다 — 떼면 입력에 있는 "3개"가 지어낸
+    "3만 명"까지 덮어 버려 아래 invented_figures 가 헐거워진다.
+    """
+    return [m.group().replace(",", "").replace(" ", "") for m in _NUMBER.finditer(text)]
+
+
+def stat_used(text: str, pattern: str) -> bool:
+    """B4: 사용자가 준 통계의 고유 숫자(예: 1,200)가 원고에 나오는가."""
+    return bool(pattern) and bool(re.search(pattern, text))
+
+
+def invented_figures(text: str, prompt: str) -> list[str]:
+    """대조군 검사: 프롬프트에 없던 숫자 토큰들 = 모델이 지어낸 수치.
+
+    프롬프트 전체(L1~L5)를 허용 목록으로 쓴다. 모델이 볼 수 있었던 숫자는
+    전부 여기 들어 있으므로, 남는 것은 어디서도 오지 않은 숫자다.
+    """
+    allowed = set(number_tokens(prompt))
+    return sorted({t for t in number_tokens(text) if t not in allowed})
