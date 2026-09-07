@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, FileText, X } from 'lucide-react'
-import { getJson } from '../lib/api'
+import ErrorBanner from '../components/ErrorBanner'
+import { ApiError, getJson } from '../lib/api'
 
 type Row = {
   id: string
@@ -18,6 +19,7 @@ const INFO_BOX = 'rounded-2xl border border-slate-200 bg-white p-6 text-sm'
 export default function HistoryPage() {
   const [rows, setRows] = useState<Row[]>([])
   const [status, setStatus] = useState<ListStatus>('loading')
+  const [listError, setListError] = useState<ApiError | null>(null)
 
   const [openId, setOpenId] = useState<string | null>(null)
   const [detail, setDetail] = useState<{ generated_text: string } | null>(null)
@@ -29,7 +31,10 @@ export default function HistoryPage() {
         setRows(d.drafts)
         setStatus(d.drafts.length === 0 ? 'empty' : 'ready')
       })
-      .catch(() => setStatus('error'))
+      .catch((e) => {
+        setListError(e as ApiError)
+        setStatus('error')
+      })
   }, [])
 
   // 상세 조회는 실패해도 화면이 그대로 멈추지 않도록 반드시 .catch 로 사용자에게 알린다.
@@ -55,10 +60,18 @@ export default function HistoryPage() {
 
         {status === 'loading' && <div className={`${INFO_BOX} text-slate-500`}>불러오는 중입니다...</div>}
 
-        {status === 'error' && (
-          <div className={`${INFO_BOX} text-red-600`}>
-            이력을 불러오지 못했습니다. Supabase가 설정되지 않았을 수 있습니다.
-          </div>
+        {/* 401은 Supabase 탓이 아니라 접속 암호 문제다(예: 운영자가 APP_PASSWORD를
+            바꾼 뒤에도 이미 로그인된 브라우저) — ErrorBanner가 다시 로그인 버튼까지
+            보여주므로 새 로직을 만들지 않고 그대로 재사용한다 (G9). */}
+        {status === 'error' && listError && (
+          <ErrorBanner
+            status={listError.status}
+            message={
+              listError.status === 401
+                ? '접속 암호가 올바르지 않습니다.'
+                : '이력을 불러오지 못했습니다. Supabase가 설정되지 않았을 수 있습니다.'
+            }
+          />
         )}
 
         {status === 'empty' && <div className={`${INFO_BOX} text-slate-500`}>아직 작성한 문서가 없습니다.</div>}
