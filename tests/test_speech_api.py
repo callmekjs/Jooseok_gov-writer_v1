@@ -75,10 +75,13 @@ def test_draft_rejects_missing_event_name_with_400_not_422():
 
 def test_draft_other_field_validation_error_is_400_with_generic_message():
     """event_name 이 아닌 다른 필드의 검증 오류는 pydantic 영문 원문을 노출하지
-    않는 일반 한글 문구로 400 을 낸다."""
+    않는 일반 한글 문구로 400 을 낸다. 이 문구는 ErrorBanner.tsx 의 400 HINT
+    ("입력값을 확인해 주세요.")와 달라야 한다 — 같으면 배너에 같은 문장이
+    메시지 줄과 힌트 줄에 두 번 찍힌다(Task 11 리뷰 Finding 3)."""
     resp = client.post(
         "/api/speech/draft",
         json={"input": {"event_name": "정상 행사명", "target_chars": "숫자아님"}},
     )
     assert resp.status_code == 400
-    assert resp.json() == {"detail": "입력값을 확인해 주세요."}
+    assert resp.json() == {"detail": "입력하신 값이 올바르지 않습니다."}
+    assert resp.json()["detail"] != "입력값을 확인해 주세요."

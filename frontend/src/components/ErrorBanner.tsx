@@ -22,9 +22,9 @@ function reLogin() {
 
 export default function ErrorBanner({ status, message }: { status: number; message: string }) {
   return (
-    <div className="mt-4 rounded border border-red-300 bg-red-50 px-4 py-3 text-sm">
-      <p className="font-medium">{message}</p>
-      <p className="mt-1 text-gray-600">{HINT[status] ?? '잠시 후 다시 시도해 주세요.'}</p>
+    <div className="mt-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm">
+      <p className="font-medium text-red-700">{message}</p>
+      <p className="mt-1 text-slate-600">{HINT[status] ?? '잠시 후 다시 시도해 주세요.'}</p>
       {status === 401 && (
         <button type="button" onClick={reLogin} className="mt-2 inline-block underline">
           다시 로그인

@@ -16,14 +16,52 @@ _require_db() 가 uuid 검증보다 먼저 실행되는 기존 순서는 이 작
 나온다는 것도 함께 확인해 둔다(이 리포의 로컬 .env 에는 실제 Supabase 값이
 있으므로, 두 테스트 모두 값을 명시적으로 monkeypatch 해서 로컬 .env 내용과
 무관하게 만든다 — conftest.py 의 autouse fixture 는 app_password·LLM 키만
-비우고 supabase 값은 건드리지 않는다)."""
+비우고 supabase 값은 건드리지 않는다).
 
+--- 리뷰 Finding 1 (재발방지) ---
+위 가드는 uuid.UUID() 로 "검증만" 하고 원본 문자열을 그대로 db 계층에 넘겼다.
+uuid.UUID() 는 PostgreSQL 의 uuid_in 보다 관대해서 `urn:uuid:` 접두사가 붙은
+문자열도 파싱에 성공한다 — 그래서 `/api/drafts/urn:uuid:<정상uuid>` 는 가드를
+그대로 통과해 원본("urn:uuid:...")이 PostgREST 로 나가고, Postgres 가 22P02 로
+거부하면서 다시 500 이 샌다(narrowed, but not eliminated). 아래 테스트들은
+PostgREST 를 respx 로 흉내내어 "가드를 통과한 값이 실제로 정규화된 표준형인지"
+를 확인한다 — db.get_draft/db.delete_draft 가 받는 draft_id 자체(=PostgREST 에
+보내는 `id=eq.<값>` 쿼리 파라미터)를 검사한다."""
+
+import httpx
+import pytest
+import respx
 from fastapi.testclient import TestClient
 
 from policy_writer.config import get_settings
 from policy_writer.server import app
 
 client = TestClient(app)
+# raise_server_exceptions=False: 고친 전 코드에서 uncaught HTTPStatusError 가
+# 그대로 파이썬 예외로 테스트를 터뜨리지 않고, 실사용자가 실제로 받는 500
+# 응답 그대로(status_code) 관찰할 수 있게 한다.
+no_raise_client = TestClient(app, raise_server_exceptions=False)
+
+CANONICAL_UUID = "12345678-1234-5678-1234-567812345678"
+URN_UUID = f"urn:uuid:{CANONICAL_UUID}"
+BRACED_UUID = f"{{{CANONICAL_UUID}}}"
+NO_HYPHEN_UUID = CANONICAL_UUID.replace("-", "")
+
+DRAFTS_URL = "https://example.supabase.co/rest/v1/drafts"
+
+
+def _postgrest_uuid_response(request: httpx.Request) -> httpx.Response:
+    """실제 PostgREST/Postgres 의 uuid_in 을 흉내낸다: 표준형(하이픈 포함 36자,
+    소문자)만 성공(200)으로 받아들이고, 그 외 표현(예: `urn:uuid:` 접두사가
+    그대로 남아 있는 값)은 22P02 로 거부(400)한다 — 정규화가 실제로 일어났는지
+    "PostgREST 에 보낸 쿼리 파라미터"로 직접 확인하기 위한 가짜 서버다."""
+    sent = request.url.params.get("id", "")
+    if sent == f"eq.{CANONICAL_UUID}":
+        return httpx.Response(200, json=[{"id": CANONICAL_UUID, "title": "t"}])
+    return httpx.Response(
+        400,
+        json={"code": "22P02", "message": f'invalid input syntax for type uuid: "{sent}"'},
+    )
 
 
 def _configure_supabase(monkeypatch) -> None:
@@ -54,3 +92,47 @@ def test_invalid_uuid_without_supabase_configured_is_503_not_400(monkeypatch):
     monkeypatch.setattr(settings, "supabase_service_role_key", "")
     resp = client.get("/api/drafts/not-a-uuid")
     assert resp.status_code == 503
+
+
+# ── Finding 1 회귀 테스트 ──────────────────────────────────────────────
+# uuid.UUID() 가 받아들이지만 Postgres 의 uuid_in 은 거부하는 `urn:uuid:` 접두사가
+# 확인된 실패 사례다: 정규화 없이 그대로 넘기면(고친 전) PostgREST 가 400 을 주고
+# raise_for_status() 가 그대로 던져 500 이 샌다. 고친 뒤에는 str(uuid.UUID(...))
+# 로 정규화된 표준형이 PostgREST 로 나가 200 이 된다.
+
+@respx.mock
+def test_get_one_urn_uuid_prefix_is_normalized_before_reaching_postgrest(monkeypatch):
+    _configure_supabase(monkeypatch)
+    route = respx.get(DRAFTS_URL).mock(side_effect=_postgrest_uuid_response)
+
+    resp = no_raise_client.get(f"/api/drafts/{URN_UUID}")
+
+    assert resp.status_code == 200, resp.text
+    assert route.calls.last.request.url.params["id"] == f"eq.{CANONICAL_UUID}"
+
+
+@respx.mock
+def test_delete_one_urn_uuid_prefix_is_normalized_before_reaching_postgrest(monkeypatch):
+    _configure_supabase(monkeypatch)
+    route = respx.delete(DRAFTS_URL).mock(side_effect=_postgrest_uuid_response)
+
+    resp = no_raise_client.delete(f"/api/drafts/{URN_UUID}")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True}
+    assert route.calls.last.request.url.params["id"] == f"eq.{CANONICAL_UUID}"
+
+
+@pytest.mark.parametrize("alt_form", [BRACED_UUID, NO_HYPHEN_UUID])
+@respx.mock
+def test_get_one_accepts_alternate_uuid_forms_and_still_reaches_db(monkeypatch, alt_form):
+    """중괄호로 감싼 형태와 하이픈 없는 32자 형태는 Postgres 의 uuid_in 도 실제로
+    받아들인다 — 우리 가드가 이런 값을 400 으로 걷어차면 과잉 차단이다. 표준형
+    으로 정규화되어 DB 계층까지 정상 도달하는지만 확인한다(400 이 아니어야 함)."""
+    _configure_supabase(monkeypatch)
+    route = respx.get(DRAFTS_URL).mock(side_effect=_postgrest_uuid_response)
+
+    resp = no_raise_client.get(f"/api/drafts/{alt_form}")
+
+    assert resp.status_code == 200, resp.text
+    assert route.calls.last.request.url.params["id"] == f"eq.{CANONICAL_UUID}"

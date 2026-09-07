@@ -39,11 +39,16 @@ app.include_router(settings_router)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """pydantic 의 영문 오류 원문을 그대로 노출하지 않고 한글 문구로 바꾼다.
     본문은 api.ts:57 의 `detail.detail` 이 읽는 모양과 같은 {"detail": "<str>"} 이어야
-    한다 — FastAPI 기본 422 응답의 {"detail": [...]} (리스트) 모양이 아니다."""
+    한다 — FastAPI 기본 422 응답의 {"detail": [...]} (리스트) 모양이 아니다.
+
+    일반 문구는 ErrorBanner.tsx 의 400 HINT("입력값을 확인해 주세요.")와 다른
+    문장이어야 한다 — 같으면 배너에 같은 문장이 메시지 줄과 힌트 줄에 두 번
+    찍힌다. 이 메시지는 "무엇이 문제인지", 힌트는 "어떻게 하면 되는지"를
+    말하도록 나눈다."""
     errors = exc.errors()
     loc = errors[0].get("loc", ()) if errors else ()
     field = loc[-1] if loc else None
-    message = "행사명은 필수입니다." if field == "event_name" else "입력값을 확인해 주세요."
+    message = "행사명은 필수입니다." if field == "event_name" else "입력하신 값이 올바르지 않습니다."
     return JSONResponse(status_code=400, content={"detail": message})
 
 
