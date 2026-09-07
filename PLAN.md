@@ -668,7 +668,7 @@ from policy_writer.llm import catalog
 def test_resolve_returns_model_meta():
     m = catalog.resolve("openai", "gpt-4o-mini")
     assert m["id"] == "gpt-4o-mini"
-    assert m["tier"] == "경제형"
+    assert m["tier"] == "인턴"
     assert m["temperature"] is True
 
 
@@ -724,28 +724,28 @@ def test_anthropic_has_exactly_two_tiers():
 #    수정할 때마다 위 날짜를 갱신할 것.
 #
 # 검증 상태:
-#   OpenAI  경제형/최상위 → [실측] 직접 호출해 200 확인
-#   OpenAI  표준형        → [조사] 문서상 존재, 미호출
+#   OpenAI  인턴/선임비서 → [실측] 직접 호출해 200 확인
+#   OpenAI  비서        → [조사] 문서상 존재, 미호출
 #   Anthropic 전부        → 키가 없어 미호출
-#   Anthropic 최상위      → 비워 뒀다 (아래 주석 참고)
+#   Anthropic 선임비서      → 비워 뒀다 (아래 주석 참고)
 # ─────────────────────────────────────────────────────────────
 from fastapi import HTTPException
 
 MODELS: dict[str, list[dict]] = {
     "openai": [
-        {"id": "gpt-4o-mini",   "tier": "경제형", "temperature": True,
+        {"id": "gpt-4o-mini",   "tier": "인턴", "temperature": True,
          "in": 0.15, "out": 0.60},
-        {"id": "gpt-5.6-terra", "tier": "표준형", "temperature": False,
+        {"id": "gpt-5.6-terra", "tier": "비서", "temperature": False,
          "in": 2.00, "out": 12.00},
-        {"id": "gpt-5.6-sol",   "tier": "최상위", "temperature": False,
+        {"id": "gpt-5.6-sol",   "tier": "선임비서", "temperature": False,
          "in": 4.00, "out": 20.00},
     ],
     "anthropic": [
-        {"id": "claude-haiku-4-5",           "tier": "경제형", "temperature": True,
+        {"id": "claude-haiku-4-5",           "tier": "인턴", "temperature": True,
          "in": 1.00, "out": 5.00},
-        {"id": "claude-sonnet-4-5-20250929", "tier": "표준형", "temperature": True,
+        {"id": "claude-sonnet-4-5-20250929", "tier": "비서", "temperature": True,
          "in": 3.00, "out": 15.00},
-        # 최상위 없음 — Anthropic 키가 없어 검증 못 했다.
+        # 선임비서 없음 — Anthropic 키가 없어 검증 못 했다.
         # 키가 생기면 후보를 한 번 호출해 200 을 확인한 뒤 이 줄을 추가한다.
     ],
 }
@@ -1134,7 +1134,7 @@ const K = {
 }
 
 // 화면 초기 선택값 — 서버의 catalog.DEFAULTS 와는 다른 개념이다.
-// 경제형은 목표를 올려도 700~1,000자에서 멈추므로 최상위를 기본으로 둔다.
+// 인턴은 목표를 올려도 700~1,000자에서 멈추므로 선임비서를 기본으로 둔다.
 const INITIAL_MODEL: Record<Provider, string> = {
   openai: 'gpt-5.6-sol',
   anthropic: 'claude-sonnet-4-5-20250929',
@@ -1449,13 +1449,13 @@ def list_models() -> dict:
 ```json
 {
   "openai": [
-    {"id": "gpt-4o-mini", "tier": "경제형", "won_per_doc": 2},
-    {"id": "gpt-5.6-terra", "tier": "표준형", "won_per_doc": 36},
-    {"id": "gpt-5.6-sol", "tier": "최상위", "won_per_doc": 64}
+    {"id": "gpt-4o-mini", "tier": "인턴", "won_per_doc": 2},
+    {"id": "gpt-5.6-terra", "tier": "비서", "won_per_doc": 36},
+    {"id": "gpt-5.6-sol", "tier": "선임비서", "won_per_doc": 64}
   ],
   "anthropic": [
-    {"id": "claude-haiku-4-5", "tier": "경제형", "won_per_doc": 16},
-    {"id": "claude-sonnet-4-5-20250929", "tier": "표준형", "won_per_doc": 48}
+    {"id": "claude-haiku-4-5", "tier": "인턴", "won_per_doc": 16},
+    {"id": "claude-sonnet-4-5-20250929", "tier": "비서", "won_per_doc": 48}
   ]
 }
 ```
@@ -1516,8 +1516,8 @@ type ModelCatalog = Record<string, ModelRow[]>
 |---|---|
 | OpenAI 선택 | 등급 **3개** + 각각 약 2/36/64원 |
 | Anthropic으로 전환 | 등급 **2개**로 바뀜 + 약 16/48원 |
-| Anthropic에서 표준형 선택 → OpenAI로 갔다가 → Anthropic 복귀 | **표준형이 그대로 선택돼 있음** |
-| 처음 방문 시 OpenAI 초기 선택 | **최상위** (`gpt-5.6-sol`) |
+| Anthropic에서 비서 선택 → OpenAI로 갔다가 → Anthropic 복귀 | **비서이 그대로 선택돼 있음** |
+| 처음 방문 시 OpenAI 초기 선택 | **선임비서** (`gpt-5.6-sol`) |
 
 - [ ] **Step 7: 커밋**
 
@@ -3527,7 +3527,7 @@ $env:ANTHROPIC_API_KEY="sk-ant-..."
 
 `catalog.py` 주석대로 대응한다. 두 가지 중 하나:
 1. 모델 id를 `gpt-4o`로 교체하고 가격을 그 모델 기준으로 갱신
-2. 표준형 칸을 빼고 OpenAI 2등급으로 간다
+2. 비서 칸을 빼고 OpenAI 2등급으로 간다
 
 **추측한 id를 새로 넣지 않는다** (G3). 어느 쪽이든 `catalog.py` 맨 위 확인 날짜를 갱신한다.
 
@@ -3535,7 +3535,7 @@ $env:ANTHROPIC_API_KEY="sk-ant-..."
 
 | 비교 항목 | 봐야 할 것 |
 |---|---|
-| 분량 | 경제형이 목표의 절반에서 멈추는가 |
+| 분량 | 인턴이 목표의 절반에서 멈추는가 |
 | 6단 | 6개 단이 다 있는가, 4단이 두꺼운가 |
 | 자기소개 | 발화자 이름이 본문에 나오는가 |
 | 통계 | "12만 명"을 썼는가 |

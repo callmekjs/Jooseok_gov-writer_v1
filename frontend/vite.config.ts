@@ -8,9 +8,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 5173,
+    port: 5174,      // ★ 8010·5173 은 이 PC 의 다른 프로젝트 전용 포트 — 여기선 8011·5174
     proxy: {
-      '/api': { target: 'http://localhost:8010', changeOrigin: true },   // ★ 8010
+      '/api': { target: 'http://localhost:8011', changeOrigin: true },   // ★ 8011 (run.ps1 과 일치해야 함)
     },
   },
 })

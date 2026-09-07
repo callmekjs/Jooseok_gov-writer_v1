@@ -69,7 +69,7 @@ API       : 11개
 | DB | Supabase (PostgreSQL) | 무료 티어 + REST API 제공. SDK 없이 httpx로 직접 친다 |
 | 파일 읽기 | pypdf, python-docx, hwpx(ZIP 파싱) | 행사계획서가 이 세 형식으로 온다 |
 | 파일 쓰기 | markdown, python-hwpx | 공무원이 최종적으로 원하는 건 한글파일이다 |
-| 실행(윈도우) | `run.ps1` — 백엔드 **8010**, 프론트 5173 | 8000번은 이 PC에서 다른 프로그램이 잡고 있다 |
+| 실행(윈도우) | `run.ps1` — 백엔드 **8011**, 프론트 5174 | 8000번은 이 PC에서 다른 프로그램이 잡고 있다 |
 | 배포 | Render | GitHub 연결 후 push만 하면 갱신된다 |
 
 ---
@@ -78,17 +78,17 @@ API       : 11개
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ① 프론트엔드 (React, :5173)                                     │
+│  ① 프론트엔드 (React, :5174)                                     │
 │     홈 · 작성폼 · 결과 · 이력 · 설정                              │
 │     localStorage 에 회사/모델/키를 기억                           │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ ② 네트워크
                            │   헤더 3개: X-LLM-Provider / X-LLM-Model / X-{회사}-Key
-                           │   개발: Vite 프록시 → :8010
+                           │   개발: Vite 프록시 → :8011
                            │   배포: 같은 도메인 (/api/*)
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  ③ 백엔드 (FastAPI, :8010)                                       │
+│  ③ 백엔드 (FastAPI, :8011)                                       │
 │     server.py 가 라우터 4개를 꽂는다                              │
 │     ┌───────────────────────────────────────────────────┐        │
 │     │  ④ AI 파트                                         │        │
@@ -227,29 +227,29 @@ src/policy_writer/
 #    수정할 때마다 위 날짜를 갱신할 것.
 #
 # 검증 상태:
-#   OpenAI  경제형/최상위 → [실측] 이 키로 직접 호출해 200 확인
-#   OpenAI  표준형        → [조사] 공식 문서상 존재, 이 키로는 미호출
+#   OpenAI  인턴/선임비서 → [실측] 이 키로 직접 호출해 200 확인
+#   OpenAI  비서        → [조사] 공식 문서상 존재, 이 키로는 미호출
 #   Anthropic 전부        → 키가 없어 미호출. 원본 코드가 쓰던 id 를 표준으로 둠
-#   Anthropic 최상위      → 비워 뒀다 (아래 주석 참고)
+#   Anthropic 선임비서      → 비워 뒀다 (아래 주석 참고)
 # ─────────────────────────────────────────────────────────────
 
 from fastapi import HTTPException
 
 MODELS = {
     "openai": [
-        {"id": "gpt-4o-mini",   "tier": "경제형", "temperature": True,
+        {"id": "gpt-4o-mini",   "tier": "인턴", "temperature": True,
          "in": 0.15, "out": 0.60},   # [실측] 동작. 축사 729자 / 목표 1500
-        {"id": "gpt-5.6-terra", "tier": "표준형", "temperature": False,
+        {"id": "gpt-5.6-terra", "tier": "비서", "temperature": False,
          "in": 2.00, "out": 12.00},  # [조사] 문서상 존재. 400 나면 gpt-4o 로 교체 가능
-        {"id": "gpt-5.6-sol",   "tier": "최상위", "temperature": False,
+        {"id": "gpt-5.6-sol",   "tier": "선임비서", "temperature": False,
          "in": 4.00, "out": 20.00},  # [실측] 동작. 축사 1459자 / 목표 1500
     ],
     "anthropic": [
-        {"id": "claude-haiku-4-5",           "tier": "경제형", "temperature": True,
+        {"id": "claude-haiku-4-5",           "tier": "인턴", "temperature": True,
          "in": 1.00, "out": 5.00},
-        {"id": "claude-sonnet-4-5-20250929", "tier": "표준형", "temperature": True,
+        {"id": "claude-sonnet-4-5-20250929", "tier": "비서", "temperature": True,
          "in": 3.00, "out": 15.00},
-        # 최상위 없음 — Anthropic 키가 없어 검증을 못 했다.
+        # 선임비서 없음 — Anthropic 키가 없어 검증을 못 했다.
         # 키가 생기면 claude-opus-4-5 ($5/$25) 를 한 번 호출해 보고,
         # 200 이 오면 그때 이 줄을 추가한다. 검증 전에는 넣지 않는다.
     ],
@@ -284,7 +284,7 @@ def resolve(provider: str, model: str | None) -> dict:
 |---|---|
 | **검증 안 한 id는 목록에 넣지 않는다** | `gpt-6-astra`, `claude-opus-4-1` 같은 id를 지어내지 말 것. 200 응답을 눈으로 본 것만 넣는다 |
 | **기본 회사는 `openai`** | 원본 기본값은 `gemini`였다. 서버(`speech.py`의 `Header(...)`)와 화면(`useLLMSettings.ts`) **두 곳 다** 바꾼다. 안 그러면 첫 요청이 401로 죽는다 |
-| **Anthropic은 2등급뿐** | 최상위 칸을 억지로 채우지 않는다. 3칸 중 2칸만 열어 두는 게 정직한 상태다 |
+| **Anthropic은 2등급뿐** | 선임비서 칸을 억지로 채우지 않는다. 3칸 중 2칸만 열어 두는 게 정직한 상태다 |
 
 ---
 
@@ -509,15 +509,15 @@ def build_speech_prompt(input: SpeechInput, *, contexts=None) -> tuple[str, str]
 
 | 회사 | 등급 | 모델 | `temp` | 1건당 | 검증 |
 |---|---|---|:---:|---:|---|
-| OpenAI | 경제형 | `gpt-4o-mini` | ✅ | **약 2원** | **[실측]** 동작 |
-| Anthropic | 경제형 | `claude-haiku-4-5` | ✅ | 약 16원 | [조사] 미호출 |
-| OpenAI | 표준형 | `gpt-5.6-terra` | ❌ | 약 36원 | [조사] 미호출 |
-| Anthropic | 표준형 | `claude-sonnet-4-5-20250929` | ✅ | 약 48원 | 원본이 쓰는 id, 미호출 |
-| OpenAI | 최상위 | `gpt-5.6-sol` | ❌ | **약 64원** | **[실측]** 동작 |
+| OpenAI | 인턴 | `gpt-4o-mini` | ✅ | **약 2원** | **[실측]** 동작 |
+| Anthropic | 인턴 | `claude-haiku-4-5` | ✅ | 약 16원 | [조사] 미호출 |
+| OpenAI | 비서 | `gpt-5.6-terra` | ❌ | 약 36원 | [조사] 미호출 |
+| Anthropic | 비서 | `claude-sonnet-4-5-20250929` | ✅ | 약 48원 | 원본이 쓰는 id, 미호출 |
+| OpenAI | 선임비서 | `gpt-5.6-sol` | ❌ | **약 64원** | **[실측]** 동작 |
 
 예) sonnet-4-5 = 4,000 × $3/1M + 1,500 × $15/1M = $0.0345 → **48원**
 
-**가장 싼 것(2원)과 확인된 최상위(64원)가 약 32배 차이다.** 이 숫자를 설정 화면에 그대로 보여준다.
+**가장 싼 것(2원)과 확인된 선임비서(64원)가 약 32배 차이다.** 이 숫자를 설정 화면에 그대로 보여준다.
 사용자에게 `$0.000123` 같은 숫자는 의미가 없다. **원 단위 정수**로 변환해서 내려준다.
 
 ---
@@ -603,9 +603,9 @@ src/policy_writer/
 app = FastAPI(title="말씀자료 작성기", version="0.1.0")
 settings = get_settings()
 
-# 1) CORS — 개발일 때만 5173 허용
+# 1) CORS — 개발일 때만 5174 허용
 if settings.environment == "development":
-    app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], ...)
+    app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5174"], ...)
 
 # 2) 라우터 4개
 app.include_router(speech_router,   prefix="/api/speech")
@@ -754,8 +754,8 @@ def resolve_user_key(request: Request, provider: str) -> str:
 
 ### ④ 백엔드 파트 완료 확인
 
-- [ ] `localhost:8010/health` → `{"status":"ok"}`
-- [ ] `localhost:8010/api/info` → `{"environment":"development", ...}`
+- [ ] `localhost:8011/health` → `{"status":"ok"}`
+- [ ] `localhost:8011/api/info` → `{"environment":"development", ...}`
 - [ ] `/api/speech/draft`에 빈 `event_name`을 보내면 400
 - [ ] 키 헤더 없이 보내면 401, 메시지가 한글로 나옴
 - [ ] 배포 후 `/api/models`가 HTML이 아니라 JSON을 돌려준다 (SPA 폴백 순서 확인)
@@ -935,9 +935,9 @@ export async function callApi(path: string, body: unknown) {
 │   [OpenAI ✓]   [Anthropic]              │  ← 키가 있는 회사만 활성
 │                                          │
 │ 모델 등급                                │
-│   ○ 경제형   gpt-4o-mini      약  2원    │
-│   ○ 표준형   gpt-5.6-terra    약 36원    │
-│   ● 최상위   gpt-5.6-sol      약 64원    │  ← 초기 선택값
+│   ○ 인턴   gpt-4o-mini      약  2원    │
+│   ○ 비서   gpt-5.6-terra    약 36원    │
+│   ● 선임비서   gpt-5.6-sol      약 64원    │  ← 초기 선택값
 │                                          │
 │ API 키                                   │
 │   [sk-••••••••••••]  [연결 시험]         │
@@ -946,17 +946,17 @@ export async function callApi(path: string, body: unknown) {
 
 - 모델 목록은 `GET /api/models`로 **받아서** 그린다. 화면에 하드코딩하지 않는다
 - 회사를 바꾸면 모델 목록과 비용이 같이 바뀐다
-- Anthropic은 2칸만 나온다 (최상위 없음) — **이게 정상이다**
+- Anthropic은 2칸만 나온다 (선임비서 없음) — **이게 정상이다**
 
 > **🟠 "기본값"이 두 개다. 헷갈리기 쉬우니 구분해서 기억한다.**
 >
 > | | 어디에 | 값 | 언제 쓰이나 |
 > |---|---|---|---|
 > | 서버 폴백 | `catalog.DEFAULTS` | `gpt-4o-mini` | 헤더 `X-LLM-Model`이 **아예 없을 때** |
-> | 화면 초기값 | `useLLMSettings` localStorage 초기값 | **최상위** (`gpt-5.6-sol`) | 사용자가 처음 설정 화면을 열었을 때 |
+> | 화면 초기값 | `useLLMSettings` localStorage 초기값 | **선임비서** (`gpt-5.6-sol`) | 사용자가 처음 설정 화면을 열었을 때 |
 >
-> **화면 초기값을 최상위로 두는 이유**: 경제형(mini)은 목표를 올려도 700~1,000자에서 멈춘다 (11장 실측).
-> 경제형을 기본으로 두면 "분량이 왜 이렇게 짧냐"는 불만이 첫 사용에서 바로 나온다.
+> **화면 초기값을 선임비서로 두는 이유**: 인턴(mini)은 목표를 올려도 700~1,000자에서 멈춘다 (11장 실측).
+> 인턴을 기본으로 두면 "분량이 왜 이렇게 짧냐"는 불만이 첫 사용에서 바로 나온다.
 > 서버 폴백을 굳이 mini로 두는 이유는 반대다 — 헤더가 없는 건 **비정상 요청**이므로 가장 싼 모델로 받는 게 안전하다.
 
 ### ③-7 결과 화면 — `meta`를 보여준다
@@ -1096,13 +1096,13 @@ except Exception as e:
 
 ```
 브라우저
-  │  http://localhost:5173/write        ← 화면
-  │  http://localhost:5173/api/...      ← Vite 프록시가 가로챔
+  │  http://localhost:5174/write        ← 화면
+  │  http://localhost:5174/api/...      ← Vite 프록시가 가로챔
   ▼
-Vite dev server (:5173)
-  │  proxy: '/api' → http://localhost:8010
+Vite dev server (:5174)
+  │  proxy: '/api' → http://localhost:8011
   ▼
-FastAPI (:8010)
+FastAPI (:8011)
   ▼
 api.openai.com / api.anthropic.com
 ```
@@ -1124,16 +1124,16 @@ api.openai.com / api.anthropic.com
 
 ---
 
-### ③-2 포트 — 8010을 쓴다
+### ③-2 포트 — 8011을 쓴다
 
 | | 포트 | 비고 |
 |---|---|---|
-| 백엔드 | **8010** | 이 PC에서 8000번은 다른 프로그램이 잡고 있다 |
-| 프론트 | 5173 | Vite 기본값 |
+| 백엔드 | **8011** | 8000은 다른 프로그램이, **8010은 이 PC의 다른 프로젝트가** 전용으로 쓴다 |
+| 프론트 | **5174** | Vite 기본값은 5173이지만, **그 값이 다른 프로젝트 전용 포트라 한 칸 올려 쓴다** |
 
-**8010을 세 곳에 똑같이 써야 한다.**
+**8011을 세 곳에 똑같이 써야 한다.**
 
-1. `run.ps1`의 `uvicorn --port 8010`
+1. `run.ps1`의 `uvicorn --port 8011`
 2. `frontend/vite.config.ts`의 프록시 대상
 3. 문서·테스트 스크립트의 주소
 
@@ -1149,9 +1149,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 5173,
+    port: 5174,
     proxy: {
-      '/api': { target: 'http://localhost:8010', changeOrigin: true },   // ★
+      '/api': { target: 'http://localhost:8011', changeOrigin: true },   // ★
     },
   },
 })
@@ -1168,7 +1168,7 @@ export default defineConfig({
 if settings.environment == "development":
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=["http://localhost:5174"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],     # X-LLM-Provider 등 커스텀 헤더 통과에 필요
@@ -1240,7 +1240,7 @@ headers = {
 
 | 구간 | 값 | 이유 |
 |---|---|---|
-| 서버 → AI사 | **120초** | 최상위 모델이 1,500자를 쓰는 데 16초 걸린다. 여유를 크게 둔다 |
+| 서버 → AI사 | **120초** | 선임비서 모델이 1,500자를 쓰는 데 16초 걸린다. 여유를 크게 둔다 |
 | 브라우저 → 서버 | 130초 | 서버 타임아웃보다 길게. 그래야 504를 사용자가 받는다 |
 
 브라우저 쪽은 `AbortController`로 건다. 작성 중에는 버튼을 비활성화하고 진행 표시를 띄운다.
@@ -1262,7 +1262,7 @@ reference_files: 참고자료 여러 개
 
 ### ④ 네트워크 파트 완료 확인
 
-- [ ] 개발 중 `localhost:5173`에서 `/api/models`를 부르면 JSON이 온다 (프록시 동작)
+- [ ] 개발 중 `localhost:5174`에서 `/api/models`를 부르면 JSON이 온다 (프록시 동작)
 - [ ] 배포 주소에서 `/api/models`를 부르면 JSON이 온다 (SPA 폴백 순서)
 - [ ] 배포 주소에서 `/write`를 새로고침해도 404가 아니라 화면이 뜬다
 - [ ] 한글 파일명 다운로드가 안 깨진다
@@ -1446,7 +1446,7 @@ ANTHROPIC_API_KEY=          ← 비워둔다
 
 | # | 단계 | 시간 | 완료 확인 |
 |---|---|---:|---|
-| 1 | 준비 — 폴더 · `.gitignore` · `pyproject` · `config.py` · `server.py` | 1h | `localhost:8010/health` → `{"status":"ok"}` |
+| 1 | 준비 — 폴더 · `.gitignore` · `pyproject` · `config.py` · `server.py` | 1h | `localhost:8011/health` → `{"status":"ok"}` |
 | 2 | **화면 뼈대 + 배포** ★ | 3h | **남의 폰으로** Render 주소 접속 성공<br>`/api/info`에 `"environment":"production"` |
 | 3 | AI 연결(2사) + 키 검증 + 설정 화면 | 2.5h | 키 넣고 [연결 시험] → "정상"<br>틀린 키 → **"인증 실패"라고 이유가 뜬다** |
 | 4 | **모델 카탈로그 + `GET /api/models` + 모델 드롭다운** ★ | 1.5h | 회사를 바꾸면 모델 목록·비용이 바뀐다 |
@@ -1480,11 +1480,11 @@ ANTHROPIC_API_KEY=          ← 비워둔다
 ```
 | 회사      | 등급   | 모델                        | 글자수 | 소요 | 1건당 | 6단 | 분량준수 |
 |-----------|--------|-----------------------------|--------|------|-------|-----|----------|
-| OpenAI    | 경제형 | gpt-4o-mini                 |   729  |  4초 |   2원 |  ✅ |   49%    |
-| OpenAI    | 표준형 | gpt-5.6-terra               |        |      |  36원 |     |          |
-| OpenAI    | 최상위 | gpt-5.6-sol                 | 1,459  | 16초 |  64원 |  ✅ |   97%    |
-| Anthropic | 경제형 | claude-haiku-4-5            |        |      |  16원 |     |          |
-| Anthropic | 표준형 | claude-sonnet-4-5-20250929  |        |      |  48원 |     |          |
+| OpenAI    | 인턴 | gpt-4o-mini                 |   729  |  4초 |   2원 |  ✅ |   49%    |
+| OpenAI    | 비서 | gpt-5.6-terra               |        |      |  36원 |     |          |
+| OpenAI    | 선임비서 | gpt-5.6-sol                 | 1,459  | 16초 |  64원 |  ✅ |   97%    |
+| Anthropic | 인턴 | claude-haiku-4-5            |        |      |  16원 |     |          |
+| Anthropic | 비서 | claude-sonnet-4-5-20250929  |        |      |  48원 |     |          |
 ```
 
 **5칸 중 2칸은 이미 찼다.** 12단계는 나머지 3칸을 채우는 일이다.
@@ -1510,7 +1510,7 @@ Anthropic 2칸은 키가 있어야 채울 수 있다. 없으면 OpenAI 3칸만 �
 같은 프롬프트로 Sol은 1,459/1,500(97%)을 냈다.
 
 **대응 순서**
-1. 작성에 Sol(또는 표준형 이상)을 쓴다 → **화면 기본 등급을 최상위로**
+1. 작성에 Sol(또는 비서 이상)을 쓴다 → **화면 기본 등급을 선임비서로**
 2. L2 분량 환산표를 강하게 쓴다
 3. 그래도 모자라면 `max_completion_tokens`를 올리거나 단을 나눠 두 번 호출한다
 
@@ -1571,7 +1571,7 @@ Anthropic 2칸은 키가 있어야 채울 수 있다. 없으면 OpenAI 3칸만 �
 | 7 | 한글 파일명 | `filename="..."`이면 깨진다. RFC 5987 (`filename*=UTF-8''`)을 쓴다 |
 | 8 | HWPX | `add_paragraph()`와 `save_to_path()`만. 표·이미지는 파일이 깨진다 |
 | 9 | Vite 빌드 위치 | `build.outDir`을 `'../static'`으로. 기본값이면 FastAPI가 못 찾는다 |
-| 10 | 포트 8000 | 윈도우에서 자주 잡혀 있다. **8010**을 쓰고 Vite 프록시도 8010으로 |
+| 10 | 포트 8000 | 윈도우에서 자주 잡혀 있다. **8011**을 쓰고 Vite 프록시도 8011으로 |
 | 11 | `.env` 재시작 | `get_settings()`가 `@lru_cache`다. `.env`를 고치면 **서버를 껐다 켜야** 한다 |
 | 12 | 한글 텍스트 파일 | `utf-8 → cp949 → euc-kr` 순서로 시도 |
 | 13 | PowerShell 한글 | `ConvertTo-Json`으로 한글을 보내면 깨져서 AI가 `???`를 쓴다. **Python이나 파일로 보낼 것** |
@@ -1626,8 +1626,8 @@ copy .env.example .env
 
 **확인**
 
-- `http://localhost:8010/health` → `{"status":"ok"}`
-- `http://localhost:5173` → 홈 화면
+- `http://localhost:8011/health` → `{"status":"ok"}`
+- `http://localhost:5174` → 홈 화면
 - `/settings`에서 회사 · 모델 · 키 설정
 
 ### 축사 생성 시험
@@ -1636,7 +1636,7 @@ copy .env.example .env
 > **Python 스크립트나 JSON 파일로 보낼 것.**
 
 ```
-POST http://localhost:8010/api/speech/draft
+POST http://localhost:8011/api/speech/draft
 
 Header:
   X-LLM-Provider: openai
@@ -1689,13 +1689,13 @@ Body:
 ## 부록 — 한 장 요약 (README 맨 위에 넣을 것)
 
 ```
-[브라우저 :5173]
+[브라우저 :5174]
   홈 → 작성
   폼   : SpeechInput 14칸 전부 (발화자·청중·통계·참석자·persona_block 포함)
   설정 : 회사 2사(OpenAI·Anthropic) + 등급 + 1건당 원화 표시
   헤더 : X-LLM-Provider · X-LLM-Model · X-{회사}-Key
 
-[서버 :8010]
+[서버 :8011]
   server.py 가 라우터 4개를 꽂는다 (원본은 9개)
   catalog.resolve(provider, model)          ← 허용목록 검증. 없으면 400
   build_speech_prompt(L1+L2+L3 / L4+persona+L5) → call_llm(model_meta) → 글
@@ -1708,9 +1708,9 @@ Body:
   템플릿은 DB 가 아니라 prompts/l2_domain.py 에
 
 [모델]
-  OpenAI    경제형 gpt-4o-mini  / 표준형 gpt-5.6-terra / 최상위 gpt-5.6-sol
-  Anthropic 경제형 claude-haiku-4-5 / 표준형 claude-sonnet-4-5-20250929
-  Anthropic 최상위는 비워 둠 (검증 못 함)
+  OpenAI    인턴 gpt-4o-mini  / 비서 gpt-5.6-terra / 선임비서 gpt-5.6-sol
+  Anthropic 인턴 claude-haiku-4-5 / 비서 claude-sonnet-4-5-20250929
+  Anthropic 선임비서는 비워 둠 (검증 못 함)
   ⚠️ 목록에 없는 id 를 지어내지 말 것
 
 [외부]

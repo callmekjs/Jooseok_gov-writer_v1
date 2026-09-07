@@ -8,16 +8,18 @@ from fastapi.staticfiles import StaticFiles
 
 from policy_writer.config import get_settings
 
-app = FastAPI(title="말씀자료 작성기", version="0.1.0")
+app = FastAPI(title="말씀자료 작성기", version="1.0.0")
 settings = get_settings()
 
 STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
 
 # ── 1) CORS — 개발일 때만 ────────────────────────────────
+# ★ 5174 는 frontend/vite.config.ts 의 server.port 와 일치해야 한다. 8010·5173 은
+#   이 PC 의 다른 프로젝트 전용 포트라 이 저장소는 8011·5174 를 쓴다.
 if settings.environment == "development":
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=["http://localhost:5174"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],     # X-LLM-Provider 등 커스텀 헤더 통과에 필요
@@ -62,7 +64,7 @@ def health() -> dict:
 def info() -> dict:
     return {
         "name": "policy-writer",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "environment": settings.environment,
     }
 
