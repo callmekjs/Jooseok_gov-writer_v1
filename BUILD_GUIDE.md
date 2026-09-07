@@ -136,23 +136,24 @@ policy_writer/
 
 ## 2. 요청 하나의 일생
 
-**"작성" 버튼을 한 번 누르면 벌어지는 일 전부.** 이 13단계를 머리에 넣고 나면 나머지 파트는 각자 자기 자리를 찾는다.
+**"작성" 버튼을 한 번 누르면 벌어지는 일 전부.** 이 14단계를 머리에 넣고 나면 나머지 파트는 각자 자기 자리를 찾는다.
 
 | # | 어디서 | 무슨 일 | 실패하면 |
 |---|---|---|---|
 | 1 | 브라우저 | 폼 값을 `SpeechInput` 모양 JSON으로 만든다 | — |
 | 2 | 브라우저 | `event_type`·`audience`를 **키 → 한글 라벨**로 변환 | — |
-| 3 | 브라우저 | `lib/api.ts`가 헤더 3개를 붙인다 | 키 없으면 요청 전에 막고 안내 |
+| 3 | 브라우저 | `lib/api.ts`가 헤더를 붙인다 — `X-LLM-Provider`·`X-LLM-Model`·`X-App-Password`는 항상, `X-{회사}-Key`는 설정 화면에서 개인 키를 입력했을 때만 | — |
 | 4 | 네트워크 | `POST /api/speech/draft` | — |
-| 5 | FastAPI | Pydantic이 JSON 검증. `event_name` 비면 | **400** |
-| 6 | `common/keys.py` | `resolve_user_key()`로 헤더에서 키 추출 | **401** "설정에서 키를 넣어주세요" |
-| 7 | `llm/catalog.py` | `resolve(provider, model)` — 허용목록에 없으면 | **400** "지원하지 않는 모델" |
-| 8 | `prompts/builder.py` | `build_speech_prompt()` → `(system_prompt, user_prompt)` | — |
-| 9 | `llm/client.py` | `call_llm(...)` → 글 한 덩어리 + 토큰 수 | **502** / 타임아웃 120초 |
-| 10 | `common/quality.py` | `check_output()` — 빈 응답·분량 미달을 **경고로만** 담는다 | 막지 않음 |
-| 11 | `db/drafts.py` | `create_draft()` 시도 | **실패해도 글은 버리지 않는다** → `save_warning` |
-| 12 | FastAPI | 응답 조립 | — |
-| 13 | 브라우저 | 본문 + `meta`(모델·시간·비용)를 화면에 그린다 | — |
+| 5 | `common/auth.py` | 라우터 단위 `require_app_password()` — `APP_PASSWORD` 설정 시 헤더를 검사 | **401** "접속 암호가 올바르지 않습니다" (서버 설정 자체가 비었거나 깨졌으면 **503**) |
+| 6 | FastAPI | Pydantic이 JSON 검증. `event_name` 비면 | **400** |
+| 7 | `common/keys.py` | `resolve_user_key()` — 헤더에 키가 없으면 서버 키(`.env`/Render)로 대체 | 헤더·서버 키 둘 다 없으면 **401**. 형식이 깨지면 헤더 키는 **401**, 서버 키는 **503** |
+| 8 | `llm/catalog.py` | `resolve(provider, model)` — 허용목록에 없으면 | **400** "지원하지 않는 모델" |
+| 9 | `prompts/builder.py` | `build_speech_prompt()` → `(system_prompt, user_prompt)` | — |
+| 10 | `llm/client.py` | `call_llm(...)` → 글 한 덩어리 + 토큰 수 | **502** / 타임아웃 120초 |
+| 11 | `common/quality.py` | `check_output()` — 빈 응답·분량 미달을 **경고로만** 담는다 | 막지 않음 |
+| 12 | `db/drafts.py` | `create_draft()` 시도 | **실패해도 글은 버리지 않는다** → `save_warning` |
+| 13 | FastAPI | 응답 조립 | — |
+| 14 | 브라우저 | 본문 + `meta`(모델·시간·비용)를 화면에 그린다 | — |
 
 ### 응답 모양
 
@@ -702,17 +703,33 @@ def get_settings() -> Settings:
 
 ```python
 # common/keys.py
+# 🔴 2026-09-07 업데이트: 헤더 키만 보던 원래 버전은 지웠다. 지금은 서버 키
+# 폴백과 두 경로 모두에 대한 형식 검사(is_safe_header_value, common/auth.py)가
+# 있다 — 아래가 현재 로직이다.
 HEADER_BY_PROVIDER = {"openai": "X-OpenAI-Key", "anthropic": "X-Anthropic-Key"}
+SETTINGS_ATTR_BY_PROVIDER = {"openai": "openai_api_key", "anthropic": "anthropic_api_key"}
 
 def norm_provider(raw: str | None) -> str:
     p = (raw or "").strip().lower()
     return p if p in HEADER_BY_PROVIDER else DEFAULT_PROVIDER
 
 def resolve_user_key(request: Request, provider: str) -> str:
+    # ① 헤더에 사용자 키가 있으면 그것을 쓴다 — 형식이 깨지면(비-ASCII·앞뒤 공백) 401
     key = request.headers.get(HEADER_BY_PROVIDER[provider], "").strip()
-    if not key:
-        raise HTTPException(401, "설정에서 API 키를 먼저 입력해 주세요.")
-    return key
+    if key:
+        if not is_safe_header_value(key):
+            raise HTTPException(401, "제공한 API 키 형식이 올바르지 않습니다. 키를 다시 확인해 주세요.")
+        return key
+    # ② 없으면 서버 설정(.env 로컬 / Render 배포)의 키로 대체 — 서버 키 형식이
+    #   깨지면 503(사용자 잘못이 아니라 운영자 설정 오류)
+    server_key = getattr(get_settings(), SETTINGS_ATTR_BY_PROVIDER[provider], "")
+    if server_key:
+        if not is_safe_header_value(server_key):
+            raise HTTPException(503, "서버에 설정된 API 키 형식이 올바르지 않습니다. "
+                                      "관리자는 값 앞뒤에 공백·줄바꿈·비-ASCII 문자가 섞이지 않았는지 확인해 주세요.")
+        return server_key
+    # ③ 헤더·서버 키 둘 다 없으면 401
+    raise HTTPException(401, "이 회사의 API 키가 서버에 설정되어 있지 않습니다. 관리자에게 문의해 주세요.")
 ```
 
 ---
@@ -747,7 +764,10 @@ def resolve_user_key(request: Request, provider: str) -> str:
 | 상황 | 코드 | 사용자에게 보이는 말 |
 |---|---|---|
 | `event_name` 없음 | 400 | "행사명은 필수입니다" |
-| 키 헤더 없음 | 401 | "설정에서 API 키를 먼저 입력해 주세요" |
+| 접속 암호 없음/틀림 (`APP_PASSWORD` 설정 시) | 401 | "접속 암호가 올바르지 않습니다" |
+| `APP_PASSWORD` 미설정(production) 또는 형식이 깨짐 | 503 | 관리자용 안내 (예: "서버에 접속 암호가 설정되지 않았습니다...") |
+| 키 헤더·서버 키 둘 다 없음 | 401 | "이 회사의 API 키가 서버에 설정되어 있지 않습니다. 관리자에게 문의해 주세요" |
+| 헤더 키 형식이 깨짐 / 서버 키 형식이 깨짐 | 401 / 503 | 각각 "제공한 API 키 형식이 올바르지 않습니다..." / "서버에 설정된 API 키 형식이 올바르지 않습니다..." |
 | 키가 틀림 (AI사가 401) | 401 | "**인증 실패** — 키를 다시 확인해 주세요" |
 | 허용목록에 없는 모델 | 400 | "openai에서 지원하지 않는 모델: xxx" |
 | AI사 장애·5xx | 502 | "AI 서버가 응답하지 않습니다. 잠시 후 다시 시도해 주세요" |
@@ -937,7 +957,7 @@ export async function callApi(path: string, body: unknown) {
 설정 화면
 ┌─────────────────────────────────────────┐
 │ AI 회사                                  │
-│   [OpenAI ✓]   [Anthropic]              │  ← 키가 있는 회사만 활성
+│   [OpenAI ✓]   [Anthropic]              │  ← 항상 둘 다 활성 (서버가 키를 들고 있음)
 │                                          │
 │ 모델 등급                                │
 │   ○ 인턴   gpt-4o-mini      약  2원    │
@@ -945,7 +965,7 @@ export async function callApi(path: string, body: unknown) {
 │   ● 선임비서   gpt-5.6-sol      약 64원    │  ← 초기 선택값
 │                                          │
 │ API 키                                   │
-│   [sk-••••••••••••]  [연결 시험]         │
+│   서버에 이미 설정됨 — 입력칸 없음         │
 └─────────────────────────────────────────┘
 ```
 
@@ -1457,7 +1477,7 @@ APP_PASSWORD=...            ← 🔴 채운다. 비면 503, 앞뒤 공백이 섞
 |---|---|---:|---|
 | 1 | 준비 — 폴더 · `.gitignore` · `pyproject` · `config.py` · `server.py` | 1h | `localhost:8011/health` → `{"status":"ok"}` |
 | 2 | **화면 뼈대 + 배포** ★ | 3h | **남의 폰으로** Render 주소 접속 성공<br>`/api/info`에 `"environment":"production"` |
-| 3 | AI 연결(2사) + 키 검증 + 설정 화면 | 2.5h | 키 넣고 [연결 시험] → "정상"<br>틀린 키 → **"인증 실패"라고 이유가 뜬다** |
+| 3 | AI 연결(2사) + 키 검증 + 설정 화면 | 2.5h | 서버 `.env`에 키를 넣고 `/api/speech/draft` 호출 → 정상 생성<br>키가 없으면 **401**, 서버 키 형식이 깨지면 **503**으로 사유가 뜬다(설정 화면에는 입력칸이 없다) |
 | 4 | **모델 카탈로그 + `GET /api/models` + 모델 드롭다운** ★ | 1.5h | 회사를 바꾸면 모델 목록·비용이 바뀐다 |
 | 5 | 프롬프트 L1·L2·L3 + `builder.py` (**8종 표 + persona_block**) | 3h | Python으로 `/api/speech/draft` 호출 시 6단 축사가 나온다<br>(PowerShell JSON 금지 — 12장 함정 13) |
 

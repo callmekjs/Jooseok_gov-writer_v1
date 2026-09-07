@@ -170,18 +170,22 @@
 
 ```
 [브라우저 :5174]
-  폼 14칸  →  키·라벨 변환  →  lib/api.ts 가 헤더 3개 부착
-                                 X-LLM-Provider · X-LLM-Model · X-{회사}-Key
+  폼 14칸  →  키·라벨 변환  →  lib/api.ts 가 헤더 부착
+                                 X-LLM-Provider · X-LLM-Model · X-App-Password (항상)
+                                 X-{회사}-Key (사용자가 설정에서 개인 키를 입력했을 때만)
         │
         ▼  개발: Vite 프록시 → :8011   /   배포: 같은 도메인 /api/*
 [서버 :8011]
-  ① Pydantic 검증            없으면 400
-  ② resolve_user_key()       없으면 401
-  ③ catalog.resolve()        허용목록 밖이면 400
-  ④ build_speech_prompt()    L1+L2+L3 (시스템) / L4 + persona + L5 (유저)
-  ⑤ call_llm(model_meta)     회사별 본문 조립. temperature 는 플래그가 True 일 때만
-  ⑥ check_output()           빈 응답·분량 미달을 경고로만 담음 (막지 않음)
-  ⑦ create_draft()           실패해도 글은 버리지 않음 → save_warning
+  ① require_app_password()   틀리거나 없으면 401 (APP_PASSWORD 자체가 비었거나
+                              공백·비-ASCII 로 깨졌으면 503 — 운영자 설정 오류)
+  ② Pydantic 검증            없으면 400
+  ③ resolve_user_key()       헤더에 키가 없으면 서버 키(.env/Render)로 대체.
+                              헤더·서버 키 둘 다 없으면 401
+  ④ catalog.resolve()        허용목록 밖이면 400
+  ⑤ build_speech_prompt()    L1+L2+L3 (시스템) / L4 + persona + L5 (유저)
+  ⑥ call_llm(model_meta)     회사별 본문 조립. temperature 는 플래그가 True 일 때만
+  ⑦ check_output()           빈 응답·분량 미달을 경고로만 담음 (막지 않음)
+  ⑧ create_draft()           실패해도 글은 버리지 않음 → save_warning
         │
         ▼
 [Supabase]  drafts 표 1개 (llm_meta 에 모델·비용·소요시간 기록)
@@ -207,12 +211,14 @@ L1~L3은 요청과 무관하게 항상 같은 글이라 **상수 파일**, L4~L5
 
 ## API 엔드포인트
 
-**총 10개.** 모든 AI 호출은 아래 헤더를 공통으로 받습니다.
+**총 12개.** AI 호출은 아래 헤더를 공통으로 받습니다.
 
 ```
 X-LLM-Provider: openai | anthropic        (없으면 openai)
 X-LLM-Model:    catalog 에 있는 id         (없으면 회사 기본값)
-X-OpenAI-Key | X-Anthropic-Key            (없으면 401)
+X-OpenAI-Key | X-Anthropic-Key            (없으면 서버 키로 대체. 서버 키도 없으면 401)
+X-App-Password: 접속 암호                  (APP_PASSWORD 설정 시 필수 — AI 호출 +
+                                            /api/drafts. 없거나 틀리면 401)
 ```
 
 ### 작성
@@ -236,14 +242,16 @@ X-OpenAI-Key | X-Anthropic-Key            (없으면 401)
 |---|---|---|
 | GET | `/api/models` | 회사별 모델 목록 + 등급 + 1건당 원화 |
 | GET | `/api/local-keys` | `.env`의 로컬 키 (**development 전용**, production은 빈 응답) |
+| GET | `/api/auth/required` | 접속 암호 필요 여부 (`misconfigured` 플래그로 서버 설정 오류도 알림) |
+| POST | `/api/auth/check` | 입력한 접속 암호가 맞는지 확인 (AI 미호출) |
 
 ### 이력 · 관리
 
 | 메서드 | 엔드포인트 | 설명 |
 |---|---|---|
-| GET | `/api/drafts` | 작성 이력 조회 (`?limit=20`) |
-| GET / DELETE | `/api/drafts/{id}` | 단건 조회 / 삭제 |
-| GET | `/health` · `/api/info` | 헬스체크 · 버전·환경 |
+| GET | `/api/drafts` | 🔒 작성 이력 조회 (`?limit=20`) — `X-App-Password` 필요 |
+| GET / DELETE | `/api/drafts/{id}` | 🔒 단건 조회 / 삭제 — `X-App-Password` 필요 |
+| GET | `/health` · `/api/info` | 헬스체크 · 버전·환경 (암호 불필요) |
 
 ### 응답
 
@@ -556,7 +564,7 @@ ALTER TABLE public.drafts ENABLE ROW LEVEL SECURITY;
 
 - **서버가 `.env`(로컬) / Render 환경변수(배포)의 키를 직접 보관하고 호출에 씁니다.** 사용자가 원하면 요청 헤더(`X-OpenAI-Key`, `X-Anthropic-Key`)로 자신의 키를 대신 실어 보낼 수도 있습니다
 - 어느 경로로 들어온 값이든 서버 디스크·DB·로그에 **저장하지 않습니다**
-- `APP_PASSWORD` 접속 암호 게이트가 유료(AI 호출) 라우트를 막습니다 — 암호를 아는 사람만 서버가 든 키를 쓸 수 있습니다
+- `APP_PASSWORD` 접속 암호 게이트가 유료(AI 호출) 라우트와 `/api/drafts`(작성 이력 조회·삭제)를 막습니다 — 암호를 아는 사람만 서버가 든 키와 저장된 이력을 쓸 수 있습니다. `/api/download/*`는 요청 본문에 실려 온 텍스트를 변환해 돌려줄 뿐 저장된 데이터를 노출하지 않아 이 게이트 밖에 있습니다
 - 🔴 **`GET /api/local-keys`는 `.env`의 AI 키를 인증 없이 그대로 브라우저에 내려줍니다.** 막는 장치는 `ENVIRONMENT=production` 하나뿐입니다. 배포 시 이 변수를 반드시 설정하고, 배포 후 해당 주소를 직접 열어 `{"keys":{}}`인지 확인하세요
 - `.gitignore`를 **첫 커밋 전에** 만듭니다. 키가 한 번 GitHub에 올라가면 지워도 기록에 남습니다
 
