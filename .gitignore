@@ -18,6 +18,15 @@ dist/
 docs/*.csv
 docs/*.xlsx
 
-# Task 13 프롬프트 측정 표본 (수십 건씩 쌓인다). 숫자는 보고서에 남기고
-# 표본 자체는 커밋하지 않는다 — scripts/measure_defects.py 가 여기에 쓴다.
-docs/measure/
+# Task 13 프롬프트 측정 표본 (수십 건씩 쌓인다). 개별 실행 결과(NN.md)는
+# 커밋하지 않지만, 태그별 요약(summary.md — 결함 집계표 하나, 몇 KB)은 커밋한다.
+# 이전에는 이 디렉터리를 통째로(`docs/measure/`) 무시해 summary.md 까지
+# 함께 사라졌고, 그 결과 task-13-report.md 의 모든 수치가 원자료 없이 남은
+# 유일한 기록이 됐다 (task-13-report.md 수정 보고 Fix 1 참고).
+# 주의: 상위 디렉터리 자체를 무시하면 git 이 하위를 순회하지 않아 `!` 재포함
+# 규칙이 전혀 먹지 않는다 — 그래서 디렉터리 순회는 허용하고 파일 단위로만
+# 무시한 뒤 summary.md 만 다시 포함한다.
+docs/measure/*
+!docs/measure/*/
+docs/measure/*/*
+!docs/measure/*/summary.md
