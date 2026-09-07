@@ -21,13 +21,12 @@ def test_won_per_doc_for_sol():
 def test_won_for_usage_uses_actual_tokens():
     m = catalog.resolve("openai", "gpt-4o-mini")
     assert cost.won_for_usage(m, 0, 0) == 0
-    # 리터럴 4000/1500 을 다시 박아두면 상수가 또 바뀔 때 이 테스트가 또 깨진다 —
-    # won_per_doc() 이 실제로 쓰는 상수를 그대로 참조해 "won_per_doc == 그 상수로
-    # 계산한 값"이라는 관계 자체를 검증한다.
-    assert (
-        cost.won_for_usage(m, cost.TYPICAL_INPUT_TOKENS, cost.TYPICAL_OUTPUT_TOKENS)
-        == cost.won_per_doc(m)
-    )
+    # 리터럴 3000/1400 으로 고정한다 (일부러 하드코딩). cost.TYPICAL_* 상수를
+    # 그대로 참조해 비교하면 won_per_doc() 의 정의를 그대로 되풀이하는 것뿐이라
+    # 상수가 어떤 값으로 바뀌어도 항상 참인 tautology 가 되어 회귀를 못 잡는다.
+    # 리터럴이면 상수가 바뀔 때 이 줄이 깨지고, 그 churn 자체가 "바뀐 상수로도
+    # 계산이 여전히 맞는지" 사람이 다시 확인하게 만드는 게 목적이다.
+    assert cost.won_for_usage(m, 3000, 1400) == cost.won_per_doc(m)
 
 
 def test_won_per_doc_for_opus():

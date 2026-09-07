@@ -19,14 +19,22 @@ TYPICAL_INPUT_TOKENS/TYPICAL_OUTPUT_TOKENS 상수를 실측치로 보정하는 �
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
 from policy_writer.config import get_settings
 
 BASE_URL = os.environ.get("COMPARE_BASE_URL", "http://127.0.0.1:8011").rstrip("/")
-_FORBIDDEN = ("://localhost:8010", "://127.0.0.1:8010", "://localhost:5173", "://127.0.0.1:5173")
-if any(bad in BASE_URL for bad in _FORBIDDEN):
+# 포트 번호로만 판단한다 — 문자열 부분일치는 대소문자(LOCALHOST)·표기 차이
+# ([::1], 0.0.0.0, 127.1)에 뚫리고 80100 같은 무관한 포트에 오탐도 난다.
+# 8010/5173 금지는 예외 없는 규칙이라 호스트를 따지지 않고 포트만 막는다.
+_FORBIDDEN_PORTS = {8010, 5173}
+try:
+    _base_port = urlsplit(BASE_URL).port   # 범위 밖 포트(예: 80100)는 여기서 ValueError
+except ValueError:
+    _base_port = None                      # 8010/5173 일 수 없으니 이 가드에서는 통과시킨다
+if _base_port in _FORBIDDEN_PORTS:
     raise SystemExit(f"8010/5173 은 다른 프로젝트 전용 포트입니다 — 이 스크립트에서 쓸 수 없습니다: {BASE_URL}")
 
 TARGET = 1500
@@ -51,8 +59,12 @@ BASE_HEADERS = {"X-App-Password": APP_PASSWORD} if APP_PASSWORD else {}
 
 CATALOG = httpx.get(f"{BASE_URL}/api/models", timeout=10).json()
 
-rows = ["| 회사 | 등급 | 모델 | 글자수 | 소요 | 1건당 | 6단 | 분량준수 |",
-        "|---|---|---|---:|---:|---:|:---:|---:|"]
+# "6단 구성을 갖췄는가"는 사람이 글을 읽어야 판단할 수 있는 의미론적 검사라
+# 이 표에는 넣지 않는다 — HTTP 200 을 받았다고 자동으로 ✅를 찍으면 실제로는
+# 한 번도 검사하지 않은 항목을 측정값처럼 보이게 만든다 (❌가 나올 길이 없는
+# 열). 6단 구성은 docs/samples/ 를 사람이 직접 읽고 확인한다.
+rows = ["| 회사 | 등급 | 모델 | 글자수 | 소요 | 1건당 | 분량준수 |",
+        "|---|---|---|---:|---:|---:|---:|"]
 token_log: list[tuple[str, str, int, int]] = []   # (provider, model_id, input_tokens, output_tokens)
 
 for provider, models in CATALOG.items():
@@ -65,11 +77,11 @@ for provider, models in CATALOG.items():
             res.raise_for_status()
         except httpx.HTTPStatusError as e:
             detail = e.response.text[:150]
-            rows.append(f"| {provider} | {m['tier']} | `{m['id']}` | ❌ HTTP {e.response.status_code} | — | — | — | — |")
+            rows.append(f"| {provider} | {m['tier']} | `{m['id']}` | ❌ HTTP {e.response.status_code} | — | — | — |")
             print(f"{m['id']}: FAIL HTTP {e.response.status_code} — {detail}")
             continue
         except Exception as e:
-            rows.append(f"| {provider} | {m['tier']} | `{m['id']}` | ❌ {str(e)[:30]} | — | — | — | — |")
+            rows.append(f"| {provider} | {m['tier']} | `{m['id']}` | ❌ {str(e)[:30]} | — | — | — |")
             print(f"{m['id']}: FAIL {e}")
             continue
         d = res.json()
@@ -79,16 +91,20 @@ for provider, models in CATALOG.items():
         token_log.append((provider, m["id"], meta["input_tokens"], meta["output_tokens"]))
         rows.append(
             f"| {provider} | {m['tier']} | `{m['id']}` | {chars:,} | {secs:.0f}초 | "
-            f"{meta['cost_won']}원 | ✅ | {round(chars / TARGET * 100)}% |"
+            f"{meta['cost_won']}원 | {round(chars / TARGET * 100)}% |"
         )
         print(f"{m['id']}: {chars}자 / {secs:.0f}초 / in={meta['input_tokens']} out={meta['output_tokens']} / {meta['cost_won']}원")
         Path("docs/samples").mkdir(parents=True, exist_ok=True)
         Path(f"docs/samples/{m['id']}.md").write_text(d["generated_text"], encoding="utf-8")
 
 out = Path("docs/model-comparison.md")
+NOTE = (
+    "6단 구성(호명·인사 → 행사 의의 → 감사·예우 → 정책·사례 → 당부 → 마무리) 여부는 "
+    "자동으로 잴 수 없어 표에서 뺐다 — `docs/samples/`를 사람이 읽고 확인한다 (수동 확인).\n"
+)
 out.write_text(
     f"# 모델 비교 실측\n\n행사: 청년 주거지원 정책 설명회 · 유형: 축사 · 목표 {TARGET}자\n\n"
-    + "\n".join(rows) + "\n", encoding="utf-8")
+    + "\n".join(rows) + "\n\n" + NOTE, encoding="utf-8")
 print(f"\n→ {out}")
 
 if token_log:
