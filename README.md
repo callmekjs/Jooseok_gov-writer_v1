@@ -172,7 +172,7 @@
 [브라우저 :5174]
   폼 14칸  →  키·라벨 변환  →  lib/api.ts 가 헤더 부착
                                  X-LLM-Provider · X-LLM-Model · X-App-Password (항상)
-                                 X-{회사}-Key (사용자가 설정에서 개인 키를 입력했을 때만)
+                                 X-{회사}-Key (localStorage 에 값이 있을 때만 — 지금은 이 값을 넣는 화면이 없다)
         │
         ▼  개발: Vite 프록시 → :8011   /   배포: 같은 도메인 /api/*
 [서버 :8011]
@@ -225,9 +225,9 @@ X-App-Password: 접속 암호                  (APP_PASSWORD 설정 시 필수 �
 
 | 메서드 | 엔드포인트 | 설명 |
 |---|---|---|
-| POST | `/api/speech/draft` | 말씀자료 생성 (폼 입력) |
-| POST | `/api/speech/draft-with-docs` | 말씀자료 + 참고자료 첨부 (multipart) |
-| POST | `/api/speech/auto-draft` | 행사계획서 업로드 → 폼 추정 후 자동 생성 |
+| POST | `/api/speech/draft` | 🔒 말씀자료 생성 (폼 입력) — `X-App-Password` 필요 |
+| POST | `/api/speech/draft-with-docs` | 🔒 말씀자료 + 참고자료 첨부 (multipart) — `X-App-Password` 필요 |
+| POST | `/api/speech/auto-draft` | 🔒 행사계획서 업로드 → 폼 추정 후 자동 생성 — `X-App-Password` 필요 |
 
 ### 다운로드
 
@@ -454,7 +454,7 @@ policy_writer/
 │       │   └── FormSection.tsx
 │       ├── hooks/useLLMSettings.ts  # localStorage (회사 + 모델 + 키)
 │       └── lib/
-│           ├── api.ts               # ★ 헤더 3개를 한 곳에서 부착
+│           ├── api.ts               # ★ 요청 헤더 부착을 한 곳에서 관리 (Provider·Model·App-Password·조건부 개인키)
 │           ├── speechFields.ts      # ★ 폼 칸 정의를 데이터로
 │           └── speech-data.ts       # 유형 8종 · 청중 · 분량 · 직급 상수
 │
@@ -539,7 +539,7 @@ ALTER TABLE public.drafts ENABLE ROW LEVEL SECURITY;
 
 | # | 단계 | 시간 | 완료 확인 | 상태 |
 |---|---|---:|---|:---:|
-| 11 | 품질검사 + 오류 화면 + 모바일 | 2h | 키 지우고 [작성] → **"설정에서 키를 넣어주세요"** | ☑ |
+| 11 | 품질검사 + 오류 화면 + 모바일 | 2h | 접속 암호 지우고 [작성] → 오류 화면 + **다시 로그인** 버튼 | ☑ |
 | 12 | **모델 등급별 비교 실측** | 1h | 위 비교표의 빈 칸을 채움 | ☑ |
 | 13 | 글 품질 다듬기 (유형 4종 × L2 수정) | 3h | 결과물을 보고 **"손보면 쓰겠다"** | ☑ |
 | 14 | 재배포 + README + 화면 사진 | 2h | `/api/local-keys`가 빈 응답 | ☐ (코드·문서는 이 커밋으로 끝. 화면 사진·배포 재확인은 컨트롤러 진행 중) |

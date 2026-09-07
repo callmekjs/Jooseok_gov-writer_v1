@@ -142,7 +142,7 @@ policy_writer/
 |---|---|---|---|
 | 1 | 브라우저 | 폼 값을 `SpeechInput` 모양 JSON으로 만든다 | — |
 | 2 | 브라우저 | `event_type`·`audience`를 **키 → 한글 라벨**로 변환 | — |
-| 3 | 브라우저 | `lib/api.ts`가 헤더를 붙인다 — `X-LLM-Provider`·`X-LLM-Model`·`X-App-Password`는 항상, `X-{회사}-Key`는 설정 화면에서 개인 키를 입력했을 때만 | — |
+| 3 | 브라우저 | `lib/api.ts`가 헤더를 붙인다 — `X-LLM-Provider`·`X-LLM-Model`·`X-App-Password`는 항상, `X-{회사}-Key`는 localStorage 에 값이 있을 때만(지금은 이 값을 넣는 화면이 없다) | — |
 | 4 | 네트워크 | `POST /api/speech/draft` | — |
 | 5 | `common/auth.py` | 라우터 단위 `require_app_password()` — `APP_PASSWORD` 설정 시 헤더를 검사 | **401** "접속 암호가 올바르지 않습니다" (서버 설정 자체가 비었거나 깨졌으면 **503**) |
 | 6 | FastAPI | Pydantic이 JSON 검증. `event_name` 비면 | **400** |
