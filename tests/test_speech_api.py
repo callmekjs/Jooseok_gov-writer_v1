@@ -44,3 +44,41 @@ def test_auto_draft_survives_a_filename_with_no_stem():
         files={"plan_file": (".txt", "행사 축사 순서 군수".encode("utf-8"), "text/plain")},
     )
     assert resp.status_code != 500
+
+
+# ── Task 11-C: /api/speech/draft 는 pydantic 기본 422 가 아니라 400 이어야 한다 ──
+# draft-with-docs·auto-draft 는 SpeechInput 을 라우트 안에서 직접 만들어 ValidationError
+# 를 손으로 잡지만(위 테스트들), /api/speech/draft 는 `payload: DraftIn` 시그니처로
+# FastAPI 가 자동으로 검증한다 — 실패하면 손으로 잡을 기회 없이 FastAPI 가 곧장
+# RequestValidationError(422) 를 던진다. PLAN 의 API 계약은 400 이므로
+# server.py 의 전역 핸들러(validation_exception_handler)가 이를 바꿔야 한다.
+# 이 라우트는 접속 암호 게이트 뒤에 있지만, conftest.py 의 autouse fixture 가 매
+# 테스트마다 app_password 를 비워 두므로(+ 기본 environment 는 "development") 별도
+# 헤더 없이도 게이트를 통과한다 — test_auth.py 의 VALID_DRAFT_BODY 케이스들과 동일한
+# 전제다.
+
+
+def test_draft_rejects_empty_event_name_with_400_not_422():
+    """event_name 이 빈 문자열이면(Field min_length=1 위반) 422 가 아니라 400,
+    본문은 프론트(api.ts 의 detail.detail)가 읽는 {"detail": "<str>"} 모양이어야 한다."""
+    resp = client.post("/api/speech/draft", json={"input": {"event_name": ""}})
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "행사명은 필수입니다."}
+
+
+def test_draft_rejects_missing_event_name_with_400_not_422():
+    """event_name 자체가 없어도(필드 누락) 마찬가지로 400 이어야 한다."""
+    resp = client.post("/api/speech/draft", json={"input": {}})
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "행사명은 필수입니다."}
+
+
+def test_draft_other_field_validation_error_is_400_with_generic_message():
+    """event_name 이 아닌 다른 필드의 검증 오류는 pydantic 영문 원문을 노출하지
+    않는 일반 한글 문구로 400 을 낸다."""
+    resp = client.post(
+        "/api/speech/draft",
+        json={"input": {"event_name": "정상 행사명", "target_chars": "숫자아님"}},
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "입력값을 확인해 주세요."}

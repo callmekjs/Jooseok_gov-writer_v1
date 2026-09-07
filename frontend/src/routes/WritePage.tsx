@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Sparkles } from 'lucide-react'
+import ErrorBanner from '../components/ErrorBanner'
 import Field, { inputClass } from '../components/Field'
 import { ApiError, callApi, postMultipart } from '../lib/api'
 import { CUSTOM_CHARS_MAX, CUSTOM_CHARS_MIN, EVENT_TYPES } from '../lib/speech-data'
@@ -160,14 +161,7 @@ export default function WritePage() {
             </p>
           )}
 
-          {error && (
-            <div className="mt-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error.message}
-              {error.status === 401 && (
-                <Link to="/settings" className="ml-2 underline">설정으로 가기</Link>
-              )}
-            </div>
-          )}
+          {error && <ErrorBanner status={error.status} message={error.message} />}
         </div>
 
         {result && <ResultPanel result={result} title={resultTitle} />}

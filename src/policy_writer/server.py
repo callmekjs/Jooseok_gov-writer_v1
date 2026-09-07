@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from policy_writer.config import get_settings
@@ -30,7 +31,23 @@ app.include_router(download_router, prefix="/api/download")
 app.include_router(drafts_router, prefix="/api/drafts")
 app.include_router(settings_router)
 
-# ── 3) 기본 엔드포인트 ───────────────────────────────────
+# ── 3) 검증 오류 → 400 (Task 11-C) ───────────────────────
+# pydantic 이 요청 바디를 검증하다 실패하면 FastAPI 는 기본적으로 422 를 내는데,
+# PLAN 의 API 계약은 400 이다(프론트 HINT 맵에도 422 가 없다 — ErrorBanner.tsx).
+# 위치는 G8 과 무관 — G8 은 SPA 폴백 라우트 순서에만 해당한다.
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """pydantic 의 영문 오류 원문을 그대로 노출하지 않고 한글 문구로 바꾼다.
+    본문은 api.ts:57 의 `detail.detail` 이 읽는 모양과 같은 {"detail": "<str>"} 이어야
+    한다 — FastAPI 기본 422 응답의 {"detail": [...]} (리스트) 모양이 아니다."""
+    errors = exc.errors()
+    loc = errors[0].get("loc", ()) if errors else ()
+    field = loc[-1] if loc else None
+    message = "행사명은 필수입니다." if field == "event_name" else "입력값을 확인해 주세요."
+    return JSONResponse(status_code=400, content={"detail": message})
+
+
+# ── 4) 기본 엔드포인트 ───────────────────────────────────
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -45,7 +62,7 @@ def info() -> dict:
     }
 
 
-# ── 4) ★ SPA 폴백 — 반드시 맨 마지막 (G8) ────────────────
+# ── 5) ★ SPA 폴백 — 반드시 맨 마지막 (G8) ────────────────
 if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
