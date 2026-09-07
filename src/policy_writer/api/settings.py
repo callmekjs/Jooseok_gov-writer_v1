@@ -1,40 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from policy_writer.common.auth import (
     NON_ASCII_PASSWORD_MESSAGE,
+    UNSAFE_SERVER_PASSWORD_MESSAGE,
     is_ascii_only,
+    is_safe_header_value,
     password_matches,
-    require_app_password,
 )
 from policy_writer.config import get_settings
 from policy_writer.llm import catalog, cost
-from policy_writer.llm.client import call_llm
 
 router = APIRouter()
 
-
-class ValidateKeyIn(BaseModel):
-    provider: str
-    api_key: str
-
-
-@router.post("/api/validate-key")
-async def validate_key(payload: ValidateKeyIn, _auth: None = Depends(require_app_password)) -> dict:
-    """가장 싼 모델로 1토큰만 불러서 키가 살아 있는지 본다. AI 를 호출해 돈을 쓰므로 접속 암호로 막는다."""
-    if payload.provider not in catalog.MODELS:
-        raise HTTPException(400, f"지원하지 않는 회사: {payload.provider}")
-    cheapest = catalog.MODELS[payload.provider][0]
-    await call_llm(
-        provider=payload.provider,
-        model_meta=cheapest,
-        api_key=payload.api_key,
-        system_prompt="ping",
-        user_prompt="ping",
-        max_tokens=16,
-        timeout=30.0,
-    )
-    return {"ok": True, "message": "정상 연결되었습니다."}
+# ── 삭제 (2026-09-07 컨트롤러 추가지시 Fix 1) ──────────────────────────────
+# POST /api/validate-key ("연결 시험") 를 지웠다. payload.api_key 를 JSON 바디에서
+# 그대로 받아 resolve_user_key()·is_safe_header_value() 를 거치지 않고 곧장
+# call_llm() 에 넘기고 있었다 — 헤더 경로의 키 검증(2026-09-07 컨트롤러 추가지시
+# §3)이 있어도 이 라우트는 그걸 비껴갔다. JSON 바디는 애초에 ASCII 제약이 없어
+# 헤더 경로보다 더 뚫기 쉬웠고,
+# h11 의 예외 메시지가 키 값을 그대로 담아(`Illegal header value b'Bearer
+# sk-...'`) uvicorn 로그로 흘러갈 수 있었다(G12 위반). frontend/src 전체·
+# tests·scripts 를 grep 해 이 라우트를 부르는 곳이 하나도 없음을 확인했다 —
+# SettingsPage.tsx 의 "API 키" 섹션은 이미 "서버에 키가 설정돼 있어 직접
+# 입력하지 않아도 됩니다"만 보여줄 뿐 입력칸도 [연결 시험] 버튼도 없다.
+# 클라이언트가 키를 들고 있던 옛 모델의 마지막 흔적이라 가드를 추가하는 대신
+# 라우트 자체를 지웠다(G10: 만들어놓고 안 부르는 함수 금지 — 같은 원칙을
+# "아무도 안 부르는 라우트"에도 적용). call_llm() 도달 지점이 하나 줄어
+# resolve_user_key() 가 유일한 통로가 됐다.
 
 
 @router.get("/api/local-keys")
@@ -68,14 +61,17 @@ def auth_required() -> dict:
     보이면 안 된다 — 화면이 오해하거나 사용자가 자기 탓으로 여기게 된다):
       1) production 인데 APP_PASSWORD 가 비어 있음(배포자의 설정 누락) — 이
          상태에서는 require_app_password 가 모든 유료 라우트를 503 으로 막는다.
-      2) APP_PASSWORD 자체에 비-ASCII 문자(한글 등)가 있음(수정 라운드 2) —
-         그 값을 X-App-Password 헤더로 보낼 방법이 없어(ISO-8859-1 제약) 어떤
-         사용자가 무엇을 입력해도 로그인 유지가 안 된다."""
+      2) APP_PASSWORD 자체가 outbound/inbound HTTP 헤더로 안전하게 왕복할 수
+         없는 형태(수정 라운드 2·Fix 4) — 비-ASCII 문자(한글 등)는 애초에
+         ISO-8859-1 제약으로 헤더에 실을 수 없고, 앞뒤 공백·개행은 h11 이
+         인바운드 헤더를 파싱할 때 자동으로 잘라내므로(RFC 7230 OWS) 어떤
+         사용자가 무엇을 입력해도 저장된 값과 절대 일치하지 않는다. 둘 다
+         `is_safe_header_value()`(common/auth.py) 하나로 함께 잡는다."""
     settings = get_settings()
     password = settings.app_password
     unset_in_production = settings.environment == "production" and not password
-    non_ascii_server_password = bool(password) and not is_ascii_only(password)
-    if unset_in_production or non_ascii_server_password:
+    unsafe_server_password = bool(password) and not is_safe_header_value(password)
+    if unset_in_production or unsafe_server_password:
         return {"required": True, "misconfigured": True}
     return {"required": bool(password)}
 
@@ -87,9 +83,20 @@ def auth_check(payload: AuthCheckIn) -> dict:
     비-ASCII(한글 등) 암호는 401(암호 틀림)이 아니라 400(쓸 수 없는 형식)으로
     먼저 거부한다(수정 라운드 2) — X-App-Password 헤더로 왕복할 수 없어, 이걸
     걸러내지 않으면 이 화면을 거치지 않고 API 를 직접 호출했을 때 로그인은
-    "성공"하고 그 뒤 모든 요청만 조용히 실패하는 상태가 된다."""
+    "성공"하고 그 뒤 모든 요청만 조용히 실패하는 상태가 된다.
+
+    사용자가 입력한 값이 아니라 **서버에 설정된** APP_PASSWORD 자체가 깨진
+    경우(앞뒤 공백·개행·비-ASCII)는 503 이다(Fix 4) — candidate 가 무엇이든
+    password_matches() 는 절대 True 를 반환할 수 없으므로(h11 이 인바운드
+    헤더의 앞뒤 공백을 잘라내 후속 요청에서도 재현 불가능), 그대로 두면
+    사용자에게는 "계속 틀린 암호"로만 보이고 운영자는 원인을 알 길이 없다.
+    이 검사를 password_matches() 호출보다 먼저 해서, 애초에 맞을 수 없는
+    비교로 사용자를 401 미로에 몰아넣지 않는다."""
     if not is_ascii_only(payload.password):
         raise HTTPException(400, NON_ASCII_PASSWORD_MESSAGE)
+    server_password = get_settings().app_password
+    if server_password and not is_safe_header_value(server_password):
+        raise HTTPException(503, UNSAFE_SERVER_PASSWORD_MESSAGE)
     if not password_matches(payload.password):
         raise HTTPException(401, "접속 암호가 올바르지 않습니다.")
     return {"ok": True}

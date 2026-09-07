@@ -1,6 +1,6 @@
 from fastapi import HTTPException, Request
 
-from policy_writer.common.auth import is_ascii_only
+from policy_writer.common.auth import is_safe_header_value
 from policy_writer.config import get_settings
 from policy_writer.llm.catalog import DEFAULT_PROVIDER
 
@@ -34,20 +34,12 @@ def norm_provider(raw: str | None) -> str:
 # 맨 500 이 된다. 실제로 겪은 결함이다: 운영자가 Render 대시보드에 키를 붙여 넣을 때
 # 뒤에 개행이나 공백이 섞여 들어가는 흔한 실수가 원인이었다.
 #
-# common/auth.is_ascii_only 를 그대로 재사용한다(G9) — 이유는 다르지만("암호가 헤더를
-# 왕복할 수 있나" vs "키가 outbound 헤더를 만들 수 있나") 둘 다 "HTTP 헤더 값은 인쇄
-# 가능 ASCII 만 안전하게 왕복된다"는 같은 제약에서 나온다. 개행·탭 등 제어문자는
-# is_ascii_only 가 이미 걸러낸다(0x20~0x7E 밖이라서). 다만 트레일링 스페이스만 남은
-# 경우(예: "sk-abcdef ")는 인쇄 가능 ASCII 라 is_ascii_only 만으로는 통과해 버리는데,
-# 실제로 h11 에 넣어 보면 이것도 "Illegal header value" 로 거부된다(개발 중 직접 확인) —
-# 그래서 앞뒤 공백 여부를 별도로 확인한다.
-def is_safe_header_value(value: str) -> bool:
-    """value 를 그대로 outbound HTTP 요청 헤더에 넣어도 안전한지 검사한다.
-
-    인쇄 가능 ASCII(0x20~0x7E)만 허용하고, 앞뒤 공백도 거부한다. 빈 문자열은 이
-    함수의 관심사가 아니다 — "키가 없음"과 "키 형식이 깨짐"은 다른 문제이므로
-    호출부가 따로 다룬다(resolve_user_key 는 이미 값이 있을 때만 이 함수를 부른다)."""
-    return is_ascii_only(value) and value == value.strip()
+# is_safe_header_value() 는 common/auth.py 에 있다(2026-09-07 Fix 4 로 그리 옮김) —
+# require_app_password() 도 같은 예측("이 값을 HTTP 헤더로 안전하게 왕복시킬 수
+# 있나")이 필요해졌는데, keys.py 가 이미 auth.py 를 import 하므로 auth.py 가 거꾸로
+# keys.py 를 import 하면 순환 참조가 된다. 의존 방향이 맞는 auth.py 에 함수를 두고
+# 여기서는 그대로 가져다 쓴다(G9) — 아래 resolve_user_key() 의 로직·근거는 옮기기
+# 전과 동일하다.
 
 
 def resolve_user_key(request: Request, provider: str) -> str:
@@ -86,7 +78,8 @@ def resolve_user_key(request: Request, provider: str) -> str:
             raise HTTPException(
                 503,
                 f"서버에 설정된 {env_var} 형식이 올바르지 않습니다. "
-                "관리자는 값 앞뒤에 공백·줄바꿈이 섞이지 않았는지 확인해 주세요.",
+                "관리자는 값 앞뒤에 공백·줄바꿈이 섞이지 않았는지, 한글 등 비-ASCII 문자가 "
+                "섞이지 않았는지(예: 복사·붙여넣기 중 섞여 들어간 특수 따옴표·전각 문자) 확인해 주세요.",
             )
         return server_key
 

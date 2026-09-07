@@ -30,7 +30,16 @@ def require_app_password(request: Request) -> None:
         설정하는 것을 빼먹었을 때, 이미 세팅된 진짜 유료 키를 쓰는 서버가 조용히
         완전 개방되는 것을 막는다. 401(암호 오류)이 아니라 503(서버 설정 오류)인
         이유는 사용자가 암호를 틀린 게 아니라 서버가 아직 설정되지 않은 상태이기
-        때문이다 — 운영자가 무엇을 해야 하는지 알 수 있는 메시지여야 한다."""
+        때문이다 — 운영자가 무엇을 해야 하는지 알 수 있는 메시지여야 한다.
+
+    APP_PASSWORD 에 값은 있지만 HTTP 헤더로 안전하게 왕복할 수 없는 형태(비-ASCII
+    또는 앞뒤 공백·개행)면 마찬가지로 503 이다(2026-09-07 Fix 4) — h11 이 인바운드
+    헤더 값의 앞뒤 공백을 자동으로 잘라내므로(RFC 7230 OWS), 예를 들어 Render
+    대시보드에 `" pw "`처럼 공백이 섞여 들어가면 어떤 사용자가 무엇을 입력해도
+    저장된 값과 절대 일치할 수 없다 — password_matches() 로 흘려보내면 매번 401
+    "접속 암호가 올바르지 않습니다"만 반복되고, 사용자는 자기 탓인 줄 알지만
+    실제로는 아무도 로그인할 수 없는 서버 설정 오류다. 그래서 비교를 시도하기
+    전에 먼저 걸러 misconfigured 로 분류한다."""
     settings = get_settings()
     if not settings.app_password:
         if settings.environment == "production":
@@ -39,6 +48,8 @@ def require_app_password(request: Request) -> None:
                 "서버에 접속 암호가 설정되지 않았습니다. 관리자는 APP_PASSWORD 환경변수를 설정해 주세요.",
             )
         return
+    if not is_safe_header_value(settings.app_password):
+        raise HTTPException(503, UNSAFE_SERVER_PASSWORD_MESSAGE)
     if not password_matches(request.headers.get(APP_PASSWORD_HEADER) or ""):
         raise HTTPException(401, "접속 암호가 올바르지 않습니다.")
 
@@ -66,3 +77,36 @@ def is_ascii_only(value: str) -> bool:
     "비어 있음"과 "쓸 수 없는 문자를 포함함"은 서로 다른 문제이므로, 빈 값을
     이 함수로 거부하지 않는다(호출부가 필요하면 따로 빈 값을 검사한다)."""
     return all("\x20" <= ch <= "\x7e" for ch in value)
+
+
+# ── 이동 (2026-09-07 컨트롤러 추가지시 Fix 4) ───────────────────────────────
+# is_safe_header_value() 는 원래 common/keys.py 에 있었다(2026-09-07 컨트롤러
+# 추가지시 §3, resolve_user_key() 가 outbound LLM 키 헤더를 만들기 전에 검사하려고
+# 추가함 — 오늘 이 세션의 "Fix 3"(PLAN.md G-표)와는 다른, 그 이전 세션의 항목이다).
+# 여기 auth.py 로 옮긴 이유: require_app_password() 에도 **같은 예측**이
+# 필요해졌는데("이 값을 HTTP 헤더로 안전하게 왕복시킬 수 있나"), keys.py 는
+# 이미 auth.py 를 import 하고 있어(is_ascii_only) auth.py 가 거꾸로 keys.py 를
+# import 하면 순환 참조가 된다. 함수를 의존 방향이 맞는 이 파일로 옮기고,
+# keys.py 는 (이미 하던 대로) auth.py 에서 가져다 쓴다 — resolve_user_key() 의
+# 로직·근거는 전혀 바뀌지 않았다.
+def is_safe_header_value(value: str) -> bool:
+    """value 를 그대로 HTTP 헤더 값(요청 헤더 인바운드 또는 outbound 요청 헤더)으로
+    써도 안전한지 검사한다.
+
+    인쇄 가능 ASCII(0x20~0x7E)만 허용하고, 앞뒤 공백도 거부한다. 개행·탭 등
+    제어문자는 is_ascii_only 가 이미 걸러낸다. 앞뒤 공백만 남은 값(예: " pw ")은
+    인쇄 가능 ASCII 라 is_ascii_only 만으로는 통과하지만, h11 이 아웃바운드
+    전송 시점에 "Illegal header value" 로 거부하거나(LLM 키 경로) 인바운드 파싱
+    시점에 값을 잘라내(RFC 7230 OWS, 접속 암호 경로) 저장된 값과 무엇을 보내도
+    맞을 수 없게 만든다 — 그래서 앞뒤 공백 여부를 별도로 확인한다.
+
+    빈 문자열은 이 함수의 관심사가 아니다 — "값이 없음"과 "값 형식이 깨짐"은
+    다른 문제이므로 호출부가 따로 다룬다(resolve_user_key·require_app_password
+    모두 이미 값이 있을 때만 이 함수를 부른다)."""
+    return is_ascii_only(value) and value == value.strip()
+
+
+UNSAFE_SERVER_PASSWORD_MESSAGE = (
+    "서버에 설정된 APP_PASSWORD 형식이 올바르지 않습니다. 관리자는 값 앞뒤에 "
+    "공백·줄바꿈이 섞이지 않았는지, 한글 등 비-ASCII 문자가 섞이지 않았는지 확인해 주세요."
+)

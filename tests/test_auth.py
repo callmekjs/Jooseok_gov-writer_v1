@@ -147,11 +147,16 @@ def test_non_ascii_password_works(monkeypatch):
     로직 자체가 non-ASCII 를 크래시 없이 올바르게 맞다고 인식하는가")은 라운드 2 의
     사전 검사를 우회해 auth.password_matches 를 직접 호출하는 방식으로 그대로
     유지한다.
-    "틀린 암호" 쪽은 헤더 경로(/api/speech/draft)로 확인한다 — 원래 버그는 candidate
-    가 무엇이든(흔한 ASCII 오타여도) expected 하나만 비-ASCII 면 즉시 TypeError 였다는
-    것이 핵심이라, 가장 흔한 헤더 경로에서 그 부분이 고쳐졌는지를 함께 본다.
-    require_app_password(헤더 게이트)·password_matches 자체는 라운드 2 에서 손대지
-    않았으므로 이 두 확인은 라운드 1 때와 동일하게 유효하다."""
+    [Fix 4 에 따른 갱신] "틀린 암호" 쪽은 원래 헤더 경로(/api/speech/draft)에서
+    401 을 확인했다 — 그 시점(라운드 1~2)에는 require_app_password 가 서버
+    APP_PASSWORD 자체의 안전성은 검사하지 않고 곧장 password_matches 로 비교했기
+    때문이다. Fix 4 가 require_app_password 에 is_safe_header_value() 선검사를
+    추가했고, 이 함수는 비-ASCII 도 잡는다(is_ascii_only 를 포함) — 그래서 서버
+    APP_PASSWORD 가 "말씀자료2026"(비-ASCII)인 상태에서는 어떤 헤더값을 보내도
+    이제 401 이 아니라 503(서버 설정 오류)이 먼저 뜬다. 이건 회귀가
+    아니라 의도된 확장이다 — 비-ASCII 서버 암호는 앞뒤 공백 오염과 마찬가지로
+    "어떤 candidate 도 절대 맞을 수 없는" 같은 부류의 잠금이므로, 401(암호 틀림)
+    보다 503(관리자에게 알림)이 더 정확하다. 아래에서 이 새 계약을 확인한다."""
     monkeypatch.setattr(get_settings(), "app_password", "말씀자료2026")
 
     # 비교 로직 자체: 맞는 한글 암호는 500 없이 올바르게 "맞다"고 인식한다.
@@ -163,14 +168,16 @@ def test_non_ascii_password_works(monkeypatch):
     assert resp.status_code == 400
     assert resp.json()["detail"] == auth.NON_ASCII_PASSWORD_MESSAGE
 
-    # 틀린 암호 -> 401 (500 아님)
+    # [Fix 4] 서버 APP_PASSWORD 자체가 비-ASCII 라 요청자가 무엇을 보내든 503
+    # (서버 설정 오류) — 더 이상 401(암호 틀림)이 아니다. 값 자체는 담지 않는다(G12).
     resp = client.post(
         "/api/speech/draft",
         json=VALID_DRAFT_BODY,
         headers={"X-App-Password": "wrong-pw"},
     )
-    assert resp.status_code == 401
-    assert "접속 암호" in resp.json()["detail"]
+    assert resp.status_code == 503
+    assert "APP_PASSWORD" in resp.json()["detail"]
+    assert "말씀자료2026" not in resp.json()["detail"]
 
 
 # 🟠 설계: production 인데 APP_PASSWORD 가 비어 있으면 require_app_password 가 지금까지
@@ -215,20 +222,26 @@ def test_auth_required_flags_misconfiguration_when_production_has_no_password(mo
     assert resp.json() == {"required": True, "misconfigured": True}
 
 
-# 🟠 Important: POST /api/validate-key 는 유일하게 라우터 단위가 아니라 엔드포인트
-# 단위 Depends 로 암호 게이트가 걸려 있다 — 리팩터 중 _auth 파라미터가 빠져도 잡아낼
-# 테스트가 여태 없었다.
+# ── 삭제 (2026-09-07 컨트롤러 추가지시 Fix 1) ─────────────────────────────
+# POST /api/validate-key 자체를 지웠다(src/policy_writer/api/settings.py 참고) —
+# payload.api_key 를 헤더 검증 없이 곧장 call_llm() 에 넘기는, resolve_user_key()를
+# 비껴가는 두 번째 call_llm 도달 지점이었고, frontend/src·scripts 어디에도 부르는
+# 곳이 없었다(SettingsPage.tsx 에는 키 입력칸도 [연결 시험] 버튼도 없다). 예전에
+# 여기 있던 test_validate_key_requires_password 는 그 라우트가 엔드포인트 단위
+# Depends 로 암호 게이트가 걸려 있는지만 확인했는데, 라우트 자체가 없으니 이 테스트가
+# 지키던 대상도 함께 사라졌다 — 대체 테스트는 필요 없다(지킬 라우트가 없다).
+# 아래에서 라우트가 실제로 사라졌다는 것 자체를 별도로 확인한다.
 
 
-def test_validate_key_requires_password(monkeypatch):
-    """암호 없이 POST /api/validate-key -> 401 (암호 사유)"""
-    monkeypatch.setattr(get_settings(), "app_password", "right-pw")
+def test_validate_key_route_no_longer_exists():
+    """POST /api/validate-key 는 이제 존재하지 않는다 — 401(암호 게이트)이 아니라
+    405(SPA 폴백 GET 라우트만 이 경로에 매칭됨)여야 한다. 라우트가 조용히 되살아나면
+    (예: 다른 라우터에 실수로 다시 등록) 이 테스트가 잡는다."""
     resp = client.post(
         "/api/validate-key",
         json={"provider": "openai", "api_key": "sk-test-dummy-not-real"},
     )
-    assert resp.status_code == 401
-    assert "접속 암호" in resp.json()["detail"]
+    assert resp.status_code == 405
 
 
 # ── 수정 라운드 2 ─────────────────────────────────────────────────────────
@@ -267,3 +280,63 @@ def test_auth_required_flags_non_ascii_server_password_as_misconfigured(monkeypa
     resp = client.get("/api/auth/required")
     assert resp.status_code == 200
     assert resp.json() == {"required": True, "misconfigured": True}
+
+
+# ── Fix 4 (2026-09-07 컨트롤러 추가지시) ───────────────────────────────────
+# 🔴 Critical: 라운드 2 는 is_ascii_only 로 비-ASCII APP_PASSWORD 만 misconfigured 로
+# 잡았다. 그런데 h11 은 인바운드 헤더 값의 앞뒤 공백(OWS, RFC 7230)을 파싱 중에
+# 자동으로 잘라낸다 — 그래서 Render 에 " pw "처럼 앞뒤 공백이 섞인 APP_PASSWORD 를
+# 붙여 넣으면, 인쇄 가능 ASCII 라 is_ascii_only 는 통과시키지만 어떤 사용자가
+# 무엇을 입력해도(공백 없이 "pw"를 보내도, 공백을 그대로 담아 보내도 h11 이
+# 잘라내므로) 저장된 값과 다시는 일치할 수 없다 — "틀린 암호"가 아니라 영구
+# 잠금이다. is_safe_header_value()(비-ASCII + 앞뒤 공백을 함께 검사, common/auth.py
+# 로 이동)로 넓혀서 세 곳 모두 같은 misconfigured 신호를 내도록 했다: 화면이 묻는
+# GET /api/auth/required, 로그인 창구 POST /api/auth/check, 실제 게이트
+# require_app_password(). 아래에서 각각 확인한다. before/after 실측(git stash 로
+# 이 fix 이전 소스에 대해 같은 시나리오를 직접 돌려본 결과)은 task-14-report.md
+# 참고 — 고치기 전에는 세 곳 모두 401 이거나 misconfigured 플래그가 아예 없었다.
+
+WHITESPACE_DIRTY_PASSWORD = " right-pw "   # Render 대시보드 붙여넣기 오염을 흉내낸 값
+
+
+def test_require_app_password_raises_503_for_whitespace_contaminated_password(monkeypatch):
+    """서버 APP_PASSWORD 앞뒤에 공백이 섞이면, '그럴듯한' 헤더값(공백 없는 원래
+    의도값)을 보내도 401(암호 틀림)이 아니라 503(서버 설정 오류)이어야 한다 —
+    401 로 두면 사용자만 계속 재시도하며 지치고 운영자는 원인을 알 길이 없다."""
+    monkeypatch.setattr(get_settings(), "app_password", WHITESPACE_DIRTY_PASSWORD)
+    with pytest.raises(HTTPException) as e:
+        auth.require_app_password(_req({"X-App-Password": "right-pw"}))
+    assert e.value.status_code == 503
+    assert "APP_PASSWORD" in e.value.detail
+    assert WHITESPACE_DIRTY_PASSWORD not in e.value.detail   # G12
+
+
+def test_auth_check_raises_503_for_whitespace_contaminated_password(monkeypatch):
+    """로그인 창구(POST /api/auth/check)도 같은 오염을 같은 방식(503)으로 보고한다 —
+    require_app_password 와 별개 함수라 따로 확인한다(auth_check 는 AI 게이트를
+    타지 않아 require_app_password 를 거치지 않는다)."""
+    monkeypatch.setattr(get_settings(), "app_password", WHITESPACE_DIRTY_PASSWORD)
+    resp = client.post("/api/auth/check", json={"password": "right-pw"})
+    assert resp.status_code == 503
+    assert "APP_PASSWORD" in resp.json()["detail"]
+    assert WHITESPACE_DIRTY_PASSWORD not in resp.json()["detail"]
+
+
+def test_auth_required_flags_whitespace_contaminated_server_password_as_misconfigured(monkeypatch):
+    """화면이 초기 렌더에 묻는 GET /api/auth/required 도 공백 오염을 misconfigured 로
+    알린다 — 이전(라운드 2)에는 is_ascii_only 만 써서 이 케이스를 놓쳤다(공백은
+    인쇄 가능 ASCII 라서). is_safe_header_value 로 바뀌며 새로 잡힌 케이스다."""
+    monkeypatch.setattr(get_settings(), "app_password", WHITESPACE_DIRTY_PASSWORD)
+    resp = client.get("/api/auth/required")
+    assert resp.status_code == 200
+    assert resp.json() == {"required": True, "misconfigured": True}
+
+
+def test_require_app_password_still_passes_with_clean_password(monkeypatch):
+    """회귀 방지: 깨끗한(공백 없는 ASCII) 서버 암호는 여전히 정상 동작한다 — 맞는
+    헤더는 통과, 틀린 헤더는 (503 이 아니라) 401."""
+    monkeypatch.setattr(get_settings(), "app_password", "right-pw")
+    assert auth.require_app_password(_req({"X-App-Password": "right-pw"})) is None
+    with pytest.raises(HTTPException) as e:
+        auth.require_app_password(_req({"X-App-Password": "wrong-pw"}))
+    assert e.value.status_code == 401
