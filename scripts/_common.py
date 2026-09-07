@@ -64,9 +64,14 @@ TARGET_CHARS = {"격려사": 900, "환영사": 600}      # 짧은 유형은 목�
 DEFAULT_TARGET_CHARS = 1500
 
 
-def sample_input(event_type: str) -> dict:
-    """시험용 행사 정보 한 벌. SpeechInput 의 필드 이름 그대로다."""
-    return {
+def sample_input(event_type: str, *, rich: bool = False) -> dict:
+    """시험용 행사 정보 한 벌. SpeechInput 의 필드 이름 그대로다.
+
+    rich=True 면 compare_models.py·try_draft.py 가 쓰던 긴 입력이 된다 —
+    내빈 명단·일화·말투가 붙어 모델이 훨씬 많은 재료를 갖는다. 결함에 따라
+    짧은 입력에서는 재현되지 않고 긴 입력에서만 나오는 것이 있어서 둘 다 쓴다.
+    """
+    fields = {
         "event_name": "청년 주거지원 정책 설명회",
         "event_type": event_type,
         "event_date": "2026년 9월 12일",
@@ -79,3 +84,12 @@ def sample_input(event_type: str) -> dict:
         "key_messages": ["청년 월세 지원 확대"],
         "avoid_phrases": ["만감이 교차"],
     }
+    if rich:
+        fields |= {
+            "audience": "청년, 공무원, 전문가",
+            "vip_list": ["○○시장", "△△협회장"],
+            "key_messages": ["청년 월세 지원 확대", "공공임대 공급 물량 확대"],
+            "quotes_or_anecdotes": ["작년 신청자 12만 명"],
+            "persona_block": "현장에서 답을 찾겠습니다",
+        }
+    return fields

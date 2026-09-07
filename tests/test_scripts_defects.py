@@ -47,18 +47,40 @@ def test_a_paragraph_with_one_ordinal_is_not_lumped():
     assert _defects.lumped_ordinal_paragraphs(text) == []
 
 
-def test_speaker_name_in_the_thanks_list_is_flagged():
-    text = "존경하는 여러분.\n\n이 자리를 빛내 주신 국토교통부 장관 김민수님께 감사드립니다."
-    assert _defects.speaker_named_in_body(text, "김민수", has_signature=False)
+# ── B3: 발화자가 감사 대상이 되는가 ────────────────────────────────────────
+# 이 검사는 한 번 틀렸다가 고쳤다. 처음엔 "이름이 본문에 나오면 실패"로 셌는데,
+# 실제 정상 출력 6건 중 3건이 "국토교통부 장관 김민수입니다" 라는 자기소개를
+# 갖고 있어서 전부 거짓 실패가 났다. 아래 두 표본이 그 경계를 지킨다.
+REAL_SELF_INTRODUCTION = (
+    "존경하는 청년 여러분, 그리고 공무원과 전문가 여러분, 반갑습니다.\n"
+    "국토교통부 장관 김민수입니다.\n\n"
+    "이 자리를 빛내 주신 ○○시장님과 △△협회장님께 깊이 감사드립니다."
+)
+REAL_SPEAKER_IN_THANKS = (
+    "존경하는 청년 여러분, 반갑습니다.\n\n"
+    "이 자리를 빛내 주신 국토교통부 장관 김민수님을 비롯한 모든 분께 감사드립니다."
+)
 
 
-def test_first_person_draft_without_the_speaker_name_passes():
-    text = "존경하는 여러분.\n\n이 자리를 빛내 주신 모든 분께 감사드립니다."
-    assert not _defects.speaker_named_in_body(text, "김민수", has_signature=False)
+def test_self_introduction_is_not_a_failure():
+    assert _defects.thanked_as_guest(REAL_SELF_INTRODUCTION, ["김민수"]) == []
+    assert not _defects.honorific_after(REAL_SELF_INTRODUCTION, "김민수")
 
 
-def test_signature_line_is_not_counted_as_a_failure():
-    """서면축사는 마지막 줄에 이름이 반드시 들어간다 — 그건 결함이 아니다."""
-    text = "「행사」 개최를 축하합니다.\n\n감사합니다.\n\n2026년 9월 12일\n국토교통부 장관 김민수"
-    assert not _defects.speaker_named_in_body(text, "김민수", has_signature=True)
-    assert _defects.speaker_named_in_body(text, "김민수", has_signature=False)
+def test_speaker_in_the_thanks_sentence_is_flagged():
+    assert _defects.thanked_as_guest(REAL_SPEAKER_IN_THANKS, ["김민수"]) == ["김민수"]
+    assert _defects.honorific_after(REAL_SPEAKER_IN_THANKS, "김민수")
+
+
+def test_thanks_in_a_different_sentence_is_not_a_failure():
+    """감사 문장과 자기소개가 다른 문장이면 결함이 아니다 — 문장 단위로 본다."""
+    text = "국토교통부 장관 김민수입니다. 오늘 함께해 주신 여러분께 감사드립니다."
+    assert _defects.thanked_as_guest(text, ["김민수"]) == []
+
+
+def test_bugunsu_does_not_match_gunsu():
+    """행사계획서 경로에서 부군수는 정당한 감사 대상이다. 군수만 잡아야 한다."""
+    fine = "오늘 함께해 주신 부군수님과 군의회 의장님께 감사드립니다."
+    bad = "오늘 이 자리를 빛내 주신 군수님께 깊이 감사드립니다."
+    assert _defects.thanked_as_guest(fine, [r"(?<!부)군수"]) == []
+    assert _defects.thanked_as_guest(bad, [r"(?<!부)군수"]) == [r"(?<!부)군수"]

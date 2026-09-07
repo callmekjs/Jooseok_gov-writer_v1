@@ -8,6 +8,8 @@
 세 가지 결함이 있는지만 본다. 판정 기준은 측정을 시작하기 전에 고정한다 —
 측정 결과를 보고 기준을 옮기면 원하는 답이 나올 때까지 자를 바꾸는 셈이다.
 """
+import re
+
 from policy_writer.exporters.converters import split_paragraphs
 
 # 축사에는 나올 이유가 없고 이임사에는 나와야 하는 낱말만 골랐다.
@@ -43,16 +45,34 @@ def ordinal_count(text: str) -> int:
     return sum(1 for o in ORDINALS if o in text)
 
 
-def speaker_named_in_body(text: str, speaker_name: str, *, has_signature: bool) -> bool:
-    """발화자 결함(B3): 원고를 읽는 본인 이름이 본문에 나온다.
+# 감사·예우를 뜻하는 낱말. "반갑습니다"는 넣지 않는다 — 자기소개 문장에 늘
+# 붙어 있어서 넣으면 정상 원고를 전부 실패로 세게 된다.
+THANKS_MARKERS = ("감사", "고맙", "노고", "빛내", "모시", "환영")
 
-    1인칭 원고라 발화자가 자기 이름을 부를 일은 없다. 이름이 나왔다면 거의
-    언제나 감사 대상·내빈 명단에 자기를 넣은 경우다.
-    서면축사만 예외 — 마지막 서명 줄에는 이름이 반드시 들어가야 하므로 뺀다.
+_SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def thanked_as_guest(text: str, patterns: list[str]) -> list[str]:
+    """발화자 결함(B3): 원고를 읽는 본인이 감사 대상·내빈 명단에 들어갔다.
+
+    ⚠️ "이름이 본문에 나오는가"로 재면 안 된다. 실제 원고는 거의 언제나
+    "국토교통부 장관 김민수입니다" 로 자기소개를 하고, 그건 결함이 아니다
+    (docs/samples/ 의 정상 출력 6건 중 3건이 이 문장을 갖고 있다).
+    그래서 감사·예우 낱말이 **같은 문장 안에** 있을 때만 실패로 센다.
+
+    patterns 는 정규식이다 — 예를 들어 "군수"를 찾을 때 "부군수"까지 걸리면
+    안 되므로 호출하는 쪽에서 `(?<!부)군수` 처럼 넘긴다.
     """
-    if not speaker_name:
-        return False
-    paragraphs = split_paragraphs(text)
-    if has_signature and paragraphs:
-        paragraphs = paragraphs[:-1]        # 마지막 문단(서명 줄)은 검사에서 뺀다
-    return any(speaker_name in p for p in paragraphs)
+    hits = []
+    for sentence in _SENTENCE.split(text):
+        if not any(m in sentence for m in THANKS_MARKERS):
+            continue
+        for pattern in patterns:
+            if re.search(pattern, sentence) and pattern not in hits:
+                hits.append(pattern)
+    return hits
+
+
+def honorific_after(text: str, name: str) -> bool:
+    """이름 뒤에 "님"이 붙었다 = 남을 부르는 말이다. 자기소개는 "님"을 안 쓴다."""
+    return bool(name) and bool(re.search(rf"{re.escape(name)}\s*님", text))
