@@ -23,9 +23,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     getJson<{ required: boolean; misconfigured?: boolean }>('/api/auth/required')
       .then(({ required, misconfigured }) => {
-        // production 인데 서버에 APP_PASSWORD 가 설정되지 않은 상태 — 어떤 암호를
-        // 넣어도 실제로는 통과되지 않으므로(서버가 유료 라우트를 503 으로 막는다)
-        // "암호 불필요"로 오해하지 않도록 별도 화면을 보여준다.
+        // misconfigured 원인은 두 가지다 — ① production 인데 APP_PASSWORD 가
+        // 아예 비어 있는 경우, ② 값은 있지만 앞뒤 공백·개행 또는 한글 등
+        // 비-ASCII 문자가 섞여 HTTP 헤더로 왕복할 수 없는 경우(서버의
+        // common/auth.is_safe_header_value 가 판정, 2026-09-07 Fix 4). 두
+        // 경우 다 사용자가 무엇을 입력해도 실제로는 통과되지 않으므로(서버가
+        // 유료 라우트를 503 으로 막는다) "암호 불필요"로 오해하지 않도록
+        // 별도 화면을 보여준다.
         if (misconfigured) {
           setStatus('misconfigured')
           return
@@ -82,9 +86,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
             <h1 className="text-lg font-semibold text-slate-900">서버 설정 오류</h1>
           </div>
           <p className="text-sm text-slate-600">
-            서버의 접속 암호(APP_PASSWORD) 설정에 문제가 있습니다. 값이 비어 있거나
-            한글 등 비-ASCII 문자를 포함하고 있을 수 있습니다. 관리자는 영문·숫자·기호로만
-            이루어진 암호를 설정해 주세요.
+            서버의 접속 암호(APP_PASSWORD) 설정에 문제가 있습니다. 값이 비어 있거나,
+            앞뒤에 공백·줄바꿈이 섞여 있거나, 한글 등 비-ASCII 문자를 포함하고 있을 수
+            있습니다. 관리자는 영문·숫자·기호로만 이루어진 암호를 앞뒤 공백 없이
+            설정해 주세요.
           </p>
         </div>
       </div>
