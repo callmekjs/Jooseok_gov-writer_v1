@@ -1,10 +1,20 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from policy_writer.common.auth import require_app_password
 from policy_writer.db import drafts as db
 
-router = APIRouter()
+# (2026-09-07 재검토 Fix A) 이 라우터가 돌려주는 문서는 실제 행사명·날짜·장소·
+# 참석자 등 축사 본문 그 자체다 — /api/speech 의 유료 라우트와 똑같이 라우터
+# 단위로 접속 암호를 검사한다(G9, speech.py 의 패턴을 그대로 재사용).
+# 고치기 전에는 이 router 에 Depends 가 전혀 없어서, URL 만 알면 X-App-Password
+# 헤더 없이 GET /api/drafts 가 저장된 이력을 그대로 200 으로 돌려줬다(배포
+# 환경에서 직접 재현해 확인됨 — task-14-report.md 참고). frontend/src/lib/api.ts
+# 의 getJson() 이 이미 모든 호출에 X-App-Password 를 붙이고 HistoryPage.tsx 가
+# 목록·상세 조회 모두 getJson 을 쓰므로, 이 게이트를 추가해도 화면은 그대로
+# 동작한다.
+router = APIRouter(dependencies=[Depends(require_app_password)])
 
 
 def _require_db() -> None:

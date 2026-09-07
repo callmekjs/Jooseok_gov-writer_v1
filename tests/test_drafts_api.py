@@ -136,3 +136,54 @@ def test_get_one_accepts_alternate_uuid_forms_and_still_reaches_db(monkeypatch, 
 
     assert resp.status_code == 200, resp.text
     assert route.calls.last.request.url.params["id"] == f"eq.{CANONICAL_UUID}"
+
+
+# ── 재검토 Fix A (2026-09-07) ────────────────────────────────────────────
+# 🔴 Important: 고치기 전에는 이 router(api/drafts.py)에 Depends 가 전혀 없었다 —
+# speech_router 는 라우터 단위로 require_app_password 를 걸어 두면서 이 라우터만
+# 빠뜨려서, APP_PASSWORD 가 설정된 배포에서도 X-App-Password 헤더 없이 GET
+# /api/drafts 를 부르면 실제 행사명·날짜·장소가 담긴 이력이 그대로 200 으로
+# 나갔다(컨트롤러가 배포 환경에서 직접 재현해 확인). 아래 첫 테스트는 이
+# 재발을 막는다 — Supabase 설정 여부와 무관하게, 암호가 설정된 상태에서 헤더가
+# 없으면 (구 코드라면 도달했을 _require_db()/PostgREST 호출보다 먼저) 401 이
+# 나야 한다. 두 번째 테스트는 올바른 헤더를 보내면 게이트 때문에 막히지
+# 않고 실제로 이력이 돌아온다는 것까지 확인한다(단순히 "401 이 아니다"가
+# 아니라 200 + 실제 데이터로 증명한다).
+
+
+def test_list_drafts_requires_app_password_when_set(monkeypatch):
+    """헤더 없이 보내면 (Supabase 를 설정하지 않아도) 401 — require_app_password 가
+    _require_db() 보다 먼저 실행되는 라우터 단위 Depends 이기 때문이다."""
+    monkeypatch.setattr(get_settings(), "app_password", "right-pw")
+    resp = client.get("/api/drafts")
+    assert resp.status_code == 401
+    assert "접속 암호" in resp.json()["detail"]
+
+
+def test_get_one_requires_app_password_when_set(monkeypatch):
+    """상세 조회(HistoryPage.tsx 가 문서를 열 때 부르는 경로)도 같은 라우터 단위
+    게이트를 그대로 받는다."""
+    monkeypatch.setattr(get_settings(), "app_password", "right-pw")
+    resp = client.get(f"/api/drafts/{CANONICAL_UUID}")
+    assert resp.status_code == 401
+    assert "접속 암호" in resp.json()["detail"]
+
+
+@respx.mock
+def test_list_drafts_with_correct_password_still_succeeds(monkeypatch):
+    """올바른 X-App-Password 헤더를 보내면 게이트가 막지 않고 실제 이력이 돌아온다
+    — frontend/src/lib/api.ts 의 getJson() 이 이미 모든 호출에 이 헤더를 붙이므로
+    (HistoryPage.tsx 가 목록·상세 조회 모두 getJson 을 씀), 이 게이트를 추가해도
+    화면은 그대로 동작한다는 전제를 실제로 증명한다."""
+    _configure_supabase(monkeypatch)
+    monkeypatch.setattr(get_settings(), "app_password", "right-pw")
+    respx.get(DRAFTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": CANONICAL_UUID, "event_type": "축사", "title": "테스트 행사",
+                   "llm_meta": {}, "created_at": "2026-09-07T00:00:00Z"}],
+        )
+    )
+    resp = client.get("/api/drafts", headers={"X-App-Password": "right-pw"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["drafts"][0]["title"] == "테스트 행사"
