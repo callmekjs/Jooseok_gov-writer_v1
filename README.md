@@ -317,15 +317,15 @@ Supabase 대시보드 → SQL Editor → New query → `supabase/migrations/001_
 |---|---|
 | `http://localhost:8011/health` | `{"status":"ok"}` |
 | `http://localhost:5174` | 홈 화면 |
-| `http://localhost:5174/settings` | 회사 · 모델 · 키 설정 |
+| `http://localhost:5174/settings` | 회사 · 모델 등급 설정 |
 
 개발 시 Vite dev server(5174)가 `/api/*` 요청을 백엔드(**8011**)로 프록시합니다.
 
 ### 4. 회사·모델 등급 선택
 
 브라우저에서 `/settings` 진입 → 회사(OpenAI / Anthropic) 선택 → 모델 등급 선택.
-API 키는 `.env`(서버)에 이미 설정돼 있어 화면에서 따로 입력하지 않습니다 — 설정 화면의
-"API 키" 섹션은 "서버에 키가 설정돼 있어 직접 입력하지 않아도 됩니다"라는 안내만 보여줍니다.
+API 키는 `.env`(서버)에 이미 설정돼 있어 화면에는 키 관련 항목이 아예 없습니다 —
+설정 화면은 "AI 회사" · "모델 등급" 두 섹션뿐입니다.
 `APP_PASSWORD`를 설정했다면 접속 시 암호 입력 화면이 먼저 뜹니다.
 
 > **⚠️ 커맨드라인으로 시험할 때**: PowerShell `ConvertTo-Json`은 한글을 깨뜨립니다.
